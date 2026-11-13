@@ -28,7 +28,7 @@ npm run windows:build   # builds windows/target/release/Publisher.exe
 npm run windows:run
 ```
 
-Requirements, design and what has been checked are in **windows/README.md**. Its data lives in `%APPDATA%\Publisher` and the encryption key is protected by Windows (DPAPI) for your Windows user.
+Requirements, design and what has been checked are in **windows/README.md**. To let customers connect with one click, deploy the sign-in relay and submit the platform applications: both are explained step by step in **relay/README.md**. Its data lives in `%APPDATA%\Publisher` and the encryption key is protected by Windows (DPAPI) for your Windows user.
 
 ## Ground rules
 - Use **your own** developer keys (Google Desktop app OAuth client, Meta app, TikTok app), entered in the app. Never commit keys, `.env`, `data/` or videos (`.gitignore` covers them).
