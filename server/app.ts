@@ -19,6 +19,7 @@ import type { MediaRow } from './platforms/types.js';
 import { AuthError } from './platforms/types.js';
 
 const SESSION = 'sp_session';
+const DESKTOP = 'sp_desktop';
 const OAUTH = 'sp_oauth';
 
 export async function buildApp(opts: { logger?: boolean } = {}) {
@@ -33,11 +34,18 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
 	app.addContentTypeParser(['application/octet-stream', ...VIDEO_MIME], (_req, payload, done) => done(null, payload));
 
 	const secure = config.appUrl.startsWith('https');
-	const authed = (req: FastifyRequest) => config.noSignIn || Boolean(readSignedToken<{ u: string }>(req.cookies[SESSION]));
+	const desktopOk = (req: FastifyRequest) => {
+		const got = Buffer.from(String(req.cookies[DESKTOP] ?? ''));
+		const want = Buffer.from(config.desktopToken);
+		return want.length > 0 && got.length === want.length && crypto.timingSafeEqual(got, want);
+	};
+	// Desktop: only the app's own window holds the per-launch cookie. Loopback alone is not trusted.
+	const authed = (req: FastifyRequest) => (config.desktop ? desktopOk(req) : config.noSignIn || Boolean(readSignedToken<{ u: string }>(req.cookies[SESSION])));
+	const isOpen = (url: string) => url === '/api/session' || url.startsWith('/m/') || /^\/api\/oauth\/[a-z]+\/callback$/.test(url) || !url.startsWith('/api/');
 
 	app.addHook('onRequest', async (req, reply) => {
 		const url = req.url.split('?')[0];
-		const open = url === '/api/session' || url.startsWith('/m/') || !url.startsWith('/api/');
+		const open = isOpen(url);
 		if (!open && !authed(req)) return reply.code(401).send({ error: 'Sign in first.' });
 		// Simple CSRF guard: state-changing API calls must come from this app.
 		if (!open && !['GET', 'HEAD'].includes(req.method) && req.headers['x-requested-with'] !== 'social-publisher') return reply.code(403).send({ error: 'Blocked request.' });
@@ -46,6 +54,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
 	// ---------- session ----------
 	const tries = new Map<string, { n: number; at: number }>();
 	app.post('/api/session', async (req, reply) => {
+		if (config.desktop) return reply.code(403).send({ error: 'This server belongs to the Publisher desktop app. Open the app instead.' });
 		const ip = req.ip;
 		const t = tries.get(ip);
 		if (t && t.n >= 8 && now() - t.at < 10 * 60_000) return reply.code(429).send({ error: 'Too many attempts. Try again in 10 minutes.' });
@@ -60,12 +69,12 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
 		reply.setCookie(SESSION, signedToken({ u: 'owner' }, 14 * 86400), { httpOnly: true, sameSite: 'lax', secure, path: '/', maxAge: 14 * 86400 });
 		return { ok: true };
 	});
-	app.get('/api/session', async (req) => ({ signedIn: authed(req), demoMode: config.demoMode, noSignIn: config.noSignIn }));
+	app.get('/api/session', async (req) => ({ signedIn: authed(req), demoMode: config.demoMode, noSignIn: config.noSignIn && !config.desktop, desktop: config.desktop }));
 	// Worker health comes from the worker's own heartbeat, not from this server answering.
 	app.get('/api/status', async () => {
 		const db = getDb();
 		const active = (db.prepare("SELECT COUNT(*) AS n FROM targets WHERE state IN ('queued','uploading','processing')").get() as { n: number }).n;
-		return { worker: workerStatus(), activeJobs: active, noSignIn: config.noSignIn, demoMode: config.demoMode, now: now() };
+		return { worker: workerStatus(), activeJobs: active, noSignIn: config.noSignIn && !config.desktop, demoMode: config.demoMode, now: now() };
 	});
 	app.delete('/api/session', async (_req, reply) => {
 		reply.clearCookie(SESSION, { path: '/' });
@@ -147,31 +156,49 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
 		return listAccounts();
 	});
 
+	// Sign-in state lives on the server (one use, 10 minutes), so the callback works even when it
+	// arrives in the system browser, which does not share the app window's cookies.
+	const pending = new Map<string, { verifier: string; platform: Platform; exp: number }>();
+	const beginOAuth = (platform: Platform) => {
+		for (const [k, v] of pending) if (v.exp < now()) pending.delete(k);
+		const state = randomId(18);
+		const { verifier, challenge } = pkcePair();
+		pending.set(state, { verifier, platform, exp: now() + 600_000 });
+		return ADAPTERS[platform].authorizeUrl(state, challenge);
+	};
+	app.post('/api/oauth/:platform/begin', async (req, reply) => {
+		const platform = (req.params as any).platform as Platform;
+		if (!PLATFORMS.includes(platform)) return reply.code(404).send({ error: 'Unknown platform' });
+		if (!configured[platform]()) return reply.code(409).send({ error: `${PLATFORM_LABEL[platform]} is not set up yet. Add its app keys first.` });
+		return { url: beginOAuth(platform) };
+	});
 	app.get('/api/oauth/:platform/start', async (req, reply) => {
 		const platform = (req.params as any).platform as Platform;
 		if (!PLATFORMS.includes(platform)) return reply.code(404).send({ error: 'Unknown platform' });
-		if (!configured[platform]()) return reply.redirect(`${config.appUrl}/accounts?error=${encodeURIComponent(`${platform} is not set up yet. Add its app keys to .env.`)}`);
-		const state = randomId(18);
-		const { verifier, challenge } = pkcePair();
-		reply.setCookie(OAUTH, signedToken({ state, verifier, platform }, 600), { httpOnly: true, sameSite: 'lax', secure, path: '/api/oauth', maxAge: 600 });
-		return reply.redirect(ADAPTERS[platform].authorizeUrl(state, challenge));
+		if (!configured[platform]()) return reply.redirect(`${config.appUrl}/accounts?error=${encodeURIComponent(`${platform} is not set up yet. Add its app keys first.`)}`);
+		return reply.redirect(beginOAuth(platform));
 	});
 
 	app.get('/api/oauth/:platform/callback', async (req, reply) => {
 		const platform = (req.params as any).platform as Platform;
 		const q = req.query as Record<string, string>;
-		const saved = readSignedToken<{ state: string; verifier: string; platform: string }>(req.cookies[OAUTH]);
-		reply.clearCookie(OAUTH, { path: '/api/oauth' });
-		const fail = (msg: string) => reply.redirect(`${config.appUrl}/accounts?error=${encodeURIComponent(msg)}`);
+		const saved = q.state ? pending.get(q.state) : undefined;
+		if (q.state) pending.delete(q.state); // one use only
+		// The desktop app's callback opens in the system browser, so answer with a small page there.
+		const done = (ok: boolean, msg: string) =>
+			config.desktop
+				? reply.type('text/html; charset=utf-8').header('Cache-Control', 'no-store').send(callbackPage(ok, msg))
+				: reply.redirect(`${config.appUrl}/accounts?${ok ? 'connected' : 'error'}=${encodeURIComponent(msg)}`);
+		const fail = (msg: string) => done(false, msg);
 		if (q.error) return fail(`${platform}: ${q.error_description || q.error_reason || q.error}`);
-		if (!saved || saved.platform !== platform || !q.state || q.state !== saved.state) return fail('The sign-in link expired or did not match. Please try connecting again.');
+		if (!saved || saved.platform !== platform || saved.exp < now()) return fail('The sign-in link expired or did not match. Please try connecting again from the app.');
 		if (!q.code) return fail('The platform did not return an authorization code.');
 		try {
 			const adapter = ADAPTERS[platform];
 			const tokens = await adapter.exchangeCode(q.code, saved.verifier);
 			const id = await adapter.identity(tokens.accessToken, tokens);
 			const acct = upsertAccount(platform, id, tokens);
-			return reply.redirect(`${config.appUrl}/accounts?connected=${encodeURIComponent(acct.display_name)}`);
+			return done(true, acct.display_name);
 		} catch (e: any) {
 			req.log?.warn({ platform }, 'oauth exchange failed');
 			return fail(`Could not connect ${platform}: ${redact(e?.message ?? String(e))}`);
@@ -284,12 +311,21 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
 	});
 
 	// ---------- built UI ----------
-	const dist = path.resolve('dist');
+	const dist = config.uiDist;
 	if (fs.existsSync(dist)) {
 		await app.register(fastifyStatic, { root: dist, wildcard: false });
 		app.setNotFoundHandler((req, reply) => (req.url.startsWith('/api/') ? reply.code(404).send({ error: 'Not found' }) : reply.sendFile('index.html')));
 	}
 	return app;
+}
+
+const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+function callbackPage(ok: boolean, msg: string) {
+	const title = ok ? `Connected ${esc(msg)}` : 'Could not connect';
+	const body = ok ? 'You can close this tab and go back to Publisher. The account appears in Connected accounts.' : esc(msg);
+	return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Publisher</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0c0c0d;color:#ecebe8;font:15px/1.5 -apple-system,system-ui,sans-serif}main{max-width:420px;padding:28px;border:1px solid #2a2a2c;border-radius:14px;background:#151516}b{display:block;font-size:17px;margin-bottom:6px}i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:8px;background:${ok ? '#3ccf8b' : '#f0605e'}}</style>
+<main><b><i></i>${title}</b><span>${body}</span></main>`;
 }
 
 function mediaInfo(m: MediaRow) {

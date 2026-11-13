@@ -52,6 +52,36 @@ A private, single-user web app to publish one video to the owner's own TikTok, I
 
 **Adapter interface** (`server/platforms/types.ts`): `availability`, `validateSettings`, `authorizeUrl`, `exchangeCode`, `refresh`, `identity`, `revoke`, `run`, `reconcile`. Errors are typed: `TransientError` (retry), `AuthError` (reconnect), `AttentionError` (user action), `PermanentError` (fail, or `needs_attention` if the outcome may be unknown), `RejectedError` (platform-confirmed failure). Provider checkpoints (publish id, container id, resumable session URL) are saved in `provider_ref` as soon as they exist.
 
+## Desktop app (macOS, Apple Silicon)
+**Runtime.** Electron 45.3.2 (Chromium 156, Node 24.22.2). The backend TypeScript is compiled with esbuild into `dist-desktop/` and runs on Electron's own Node in two `utilityProcess` children, so no system Node is needed. `node:sqlite` was checked inside Electron's runtime. Main process: `desktop/main.ts`. Keys and import: `desktop/keys.ts`. Bridge: `desktop/preload.ts`. Service entries: `desktop/*-entry.mjs`.
+
+**Data.** Everything the user owns lives in `~/Library/Application Support/Publisher/` (folders mode 700): `data/app.db` and `data/media/`, `settings.json` (non-secret: demo mode, retention, public URL), `keys.json` (mode 600) and `logs/` (`main.log`, `api.log`, `worker.log`, secrets redacted, rotated at 5 MB). Replacing the .app never touches this folder.
+
+**Keys.** `SESSION_SECRET` and `TOKEN_ENCRYPTION_KEY` are encrypted with Electron `safeStorage`'s async API (the sync API is deprecated in Electron 45), which is backed by the macOS Keychain item "Publisher Safe Storage". If the database exists without `keys.json`, the app refuses to start rather than generate a replacement key. A Keychain failure produces an explicit error; nothing is deleted.
+
+**Import.** On first launch the app offers to import an older project folder (or `--import-from=<folder>`). It takes a consistent SQLite snapshot with `VACUUM INTO`, runs an integrity check, proves the old `.env` key decrypts stored values, copies the videos, then stores the key in the Keychain. The source folder is never modified. A report is written to `import-report.json`.
+
+**Services.** The API binds to `127.0.0.1` on port 8787, or on any free port if 8787 is taken (logged). Secrets reach the services over the private `parentPort` message, not argv. The main process waits for each service's `ready` message (30 s limit), restarts crashed services with backoff, and after repeated crashes offers Reveal Logs, Try Again or Quit. A single-instance lock prevents competing workers, and the job leases still guard the queue.
+
+**Auth.** Each launch creates a random token that the main process places as an httpOnly, SameSite=Strict cookie in its own window's session. The API rejects every `/api/*` call without it (loopback is not trusted), and password login is disabled in desktop mode. The open routes are the static UI, `/api/session`, signed `/m/` media links and OAuth callbacks (validated by one-use server-side state plus PKCE).
+
+**Window and quit.** Closing the window hides it while jobs continue, the Dock icon reopens it, and Cmd+Q quits. If jobs are active, the app asks "Keep Running" or "Quit and Resume Later". On quit the worker hands its jobs back marked "check with the platform first", and they resume on the next launch. Jobs do not run while the app is quit or the Mac is asleep.
+
+**Renderer security.** `contextIsolation`, `sandbox`, no `nodeIntegration`, no webview, DevTools off in packaged builds, permission requests denied, navigation locked to the app origin, and new windows denied (https links open in the default browser). The preload exposes only `pickVideo`, `openExternal` (sign-in hosts only), `revealLogs` and `services`. IPC checks that the sender is the app window on the app origin.
+
+**OAuth from the desktop.** Sign-in opens in the default browser. YouTube uses a Google **Desktop app** OAuth client: Google accepts loopback redirects on any port, so `http://127.0.0.1:<port>/api/oauth/youtube/callback` works. Instagram and TikTok require registered HTTPS redirects, so they use `PUBLIC_BASE_URL` (a tunnel) when it is set. The callback page tells the user to return to the app, and the Accounts page refreshes on focus. Developer credentials in a locally distributed desktop app are **not confidential**. Google says this about Desktop client secrets, and the same holds for any key pasted into a local app. Keys are stored encrypted on this Mac, but each person should use their own developer app.
+
+**ffprobe.** The unmodified FFmpeg n4.4.1 `ffprobe` (LGPL build) from `@ffprobe-installer/darwin-arm64` 5.0.1 ships at `Contents/Resources/bin/ffprobe`, with notices in `Contents/Resources/licenses/ffprobe/` (`NOTICE.txt`, `COPYING.LGPLv2.1`, `FFMPEG-LICENSE.md`). The path is passed explicitly; PATH and Homebrew are not used.
+
+**Build.**
+- `npm run package`: UI build, desktop compile, `electron-builder --mac dir --arm64`, then ad-hoc signing (`scripts/sign-adhoc.sh`). Output: `release/mac-arm64/Publisher.app`.
+- `npm run package:dmg`: also builds `release/Publisher-1.0.0-arm64.dmg`.
+- `npm run desktop:dev`: runs unpackaged in Electron.
+- `npm run icon`: regenerates `build/icon.icns`.
+- Bundle ID `local.socialpublisher.publisher`, product name **Publisher**, version 1.0.0, macOS 12 or later.
+
+**Signing.** No Developer ID identity exists on this Mac, so the app is **ad-hoc signed** for local testing only. `spctl` rejects it, and that is expected. It opens on this Mac. A copy downloaded or moved to another Mac will be blocked by Gatekeeper until it is signed with a Developer ID and notarised, which needs an Apple Developer account. Gatekeeper was not disabled. Because ad-hoc signatures change on every rebuild, macOS may ask again for Keychain access to "Publisher Safe Storage" after a rebuild. Choose Always Allow.
+
 ## Platform constraints (checked 13 Nov 2026)
 **TikTok, Content Posting API.** [Get started](https://developers.tiktok.com/docs/en/content-posting-api-get-started) · [Sharing guidelines](https://developers.tiktok.com/docs/en/content-sharing-guidelines) · [Upload](https://developers.tiktok.com/docs/en/content-posting-api-reference-upload-video)
 - Direct Post (`video.publish`) from an unaudited app is limited to private accounts, `SELF_ONLY` visibility and 5 users a day. The guidelines list "a utility tool that uploads content to accounts that you or your team manage" as not eligible for the audit. **So public direct posting is unavailable for this app.**
@@ -95,4 +125,6 @@ Platform keys are entered **in the app** (Connected accounts). Each platform has
 - [x] Drafts survive refreshes without storing credentials, and cannot republish.
 - [x] One result row per destination with an accurate status, explanation, confirmed link and a safe next step.
 - [x] Worker status from its own heartbeat, and a persistent notice while sign-in is off.
+- [x] Packaged macOS app (Apple Silicon) that starts its own backend and worker, keeps data in Application Support, protects keys with the Keychain, and recovers interrupted jobs on relaunch.
+- [x] Status checks work after the local video is cleaned up; the file is required only to send bytes.
 - [ ] Real end-to-end publish to each platform. Blocked on credentials and setup; not run.

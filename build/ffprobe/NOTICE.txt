@@ -1,0 +1,22 @@
+ffprobe (FFmpeg) — third-party notice
+=====================================
+
+Publisher includes an unmodified ffprobe executable at
+  Publisher.app/Contents/Resources/bin/ffprobe
+It is used only to read a video's duration, size, codecs and frame rate.
+
+Version:  FFmpeg n4.4.1 (ffprobe), macOS arm64
+Obtained: npm package @ffprobe-installer/darwin-arm64 5.0.1 (licence field: LGPL-2.1)
+Build:    "configuration:" is empty in `ffprobe -version`, i.e. no --enable-gpl or
+          --enable-nonfree options, so this build is covered by the GNU Lesser General
+          Public License version 2.1 or later.
+
+FFmpeg is a trademark of Fabrice Bellard, originator of the FFmpeg project.
+Licence text:       COPYING.LGPLv2.1 (in this folder)
+FFmpeg licence note: FFMPEG-LICENSE.md (in this folder, from the FFmpeg n4.4.1 source tree)
+Corresponding source code:
+  https://ffmpeg.org/releases/ffmpeg-4.4.1.tar.xz
+  https://github.com/FFmpeg/FFmpeg/tree/n4.4.1
+
+The ffprobe executable is a separate program run as a child process. You may replace it
+with another ffprobe build by swapping that file.

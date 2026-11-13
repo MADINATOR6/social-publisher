@@ -1,5 +1,6 @@
 // Regression tests: an upload that succeeded but whose response was lost, followed by status checks
 // that fail. None of these may start a fresh upload or publish.
+import fs from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { claimNext, createPost, getTarget, postView, MAX_ATTEMPTS } from '../server/jobs.js';
 import { runTarget } from '../server/runner.js';
@@ -190,6 +191,26 @@ describe('lost response, then failed status checks', () => {
 
 		expect(calls.filter((c) => c.url.includes('init'))).toHaveLength(1);
 		expect(calls.filter((c) => c.url.includes('upload.tiktok.example'))).toHaveLength(1);
+	});
+
+	it('still checks the platform after the local video was cleaned up, and only needs the file to send bytes', async () => {
+		const calls = mockFetch([[/part=status/, () => ok({ items: [{ status: { uploadStatus: 'processed' } }] })]]);
+		const { targetId } = newTarget('youtube', { title: 'T', privacy: 'private' });
+		getDb().prepare("UPDATE targets SET provider_ref = ?, remote_id = 'vidGone', phase = 'processing', uncertain = 1 WHERE id = ?").run(JSON.stringify({ sessionUrl: 'https://upload.example/x', finalSent: true }), targetId);
+		const media = getDb().prepare('SELECT m.path FROM media m JOIN posts p ON p.media_id = m.id JOIN targets t ON t.post_id = p.id WHERE t.id = ?').get(targetId) as { path: string };
+		fs.rmSync(media.path);
+		const t = await runAgain(targetId);
+		expect(t.state).toBe('published');
+		expect(t.remote_id).toBe('vidGone');
+		expect(calls.some((c) => c.method === 'PUT' || c.url.includes('uploadType=resumable'))).toBe(false);
+
+		// A fresh destination that must upload bytes reports the missing file clearly instead.
+		const second = newTarget('youtube', { title: 'T2', privacy: 'private' });
+		const m2 = getDb().prepare('SELECT m.path FROM media m JOIN posts p ON p.media_id = m.id JOIN targets t ON t.post_id = p.id WHERE t.id = ?').get(second.targetId) as { path: string };
+		fs.rmSync(m2.path);
+		const t2 = await runAgain(second.targetId);
+		expect(t2.state).toBe('failed');
+		expect(t2.error).toContain('no longer on this computer');
 	});
 
 	it('stops checking after the attempt limit and asks the owner instead of reporting a failure', async () => {

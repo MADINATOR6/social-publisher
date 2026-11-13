@@ -95,6 +95,7 @@ export const youtube: Adapter = {
 		const size = ctx.media.size;
 		if (!ctx.target.remote_id) {
 			if (!ctx.ref.sessionUrl) {
+				ctx.needFile();
 				const token = await ctx.token();
 				ctx.save({ state: 'uploading', phase: 'init', progress: 0 });
 				const s = ctx.settings;
@@ -113,12 +114,13 @@ export const youtube: Adapter = {
 			}
 
 			let { offset, videoId } = await uploadOffset(ctx);
-			const fd = fs.openSync(ctx.media.path, 'r');
+			if (!videoId && offset < size) ctx.needFile();
+			const fd = videoId || offset >= size ? null : fs.openSync(ctx.media.path, 'r');
 			try {
 				while (!videoId && offset < size) {
 					const end = Math.min(offset + CHUNK, size) - 1;
 					const buf = Buffer.alloc(end - offset + 1);
-					fs.readSync(fd, buf, 0, buf.length, offset);
+					fs.readSync(fd!, buf, 0, buf.length, offset);
 					const token = await ctx.token();
 					// Record that the final part is about to go out: after this, an expired session no longer proves nothing was created.
 					if (end === size - 1 && !ctx.ref.finalSent) ctx.save({ providerRef: { ...ctx.ref, finalSent: true } });
@@ -140,7 +142,7 @@ export const youtube: Adapter = {
 					ctx.save({ state: 'uploading', progress: Math.min(1, offset / size) });
 				}
 			} finally {
-				fs.closeSync(fd);
+				if (fd !== null) fs.closeSync(fd);
 			}
 			if (!videoId) throw new TransientError('Upload finished without a video ID; checking again');
 			ctx.save({ remoteId: videoId, state: 'processing', phase: 'processing', progress: 1 });

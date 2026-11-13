@@ -16,7 +16,7 @@ type Path = keyof typeof PAGES;
 
 function App() {
 	const [path, setPath] = useState<Path>(() => (location.pathname in PAGES ? (location.pathname as Path) : '/'));
-	const [session, setSession] = useState<{ signedIn: boolean; demoMode: boolean; noSignIn?: boolean } | null>(null);
+	const [session, setSession] = useState<{ signedIn: boolean; demoMode: boolean; noSignIn?: boolean; desktop?: boolean } | null>(null);
 	const [config, setConfig] = useState<Config | null>(null);
 	const [accounts, setAccounts] = useState<Account[]>([]);
 	const [posts, setPosts] = useState<Post[] | null>(null);
@@ -55,7 +55,15 @@ function App() {
 	// Worker health comes from the worker's own heartbeat (it writes one every 10 s).
 	useEffect(() => {
 		if (!session?.signedIn) return;
-		const poll = () => api.status().then(setStatus).catch(() => setStatus(null));
+		let lastActive = -1;
+		const poll = () =>
+			api
+				.status()
+				.then((s) => {
+					setStatus(s);
+					if (s.activeJobs !== lastActive) (lastActive = s.activeJobs), refreshPosts();
+				})
+				.catch(() => setStatus(null));
 		poll();
 		const t = setInterval(poll, 10_000);
 		return () => clearInterval(t);
@@ -77,7 +85,8 @@ function App() {
 	const page = PAGES[path];
 	const live = accounts.filter((a) => a.status !== 'disconnected');
 	const attention = (posts ?? []).filter((p) => p.targets.some((t) => t.state === 'failed' || t.state === 'needs_attention')).length;
-	const inFlight = (posts ?? []).filter((p) => !p.done).length;
+	// Count from the server's live status; fall back to the loaded posts before the first poll.
+	const inFlight = status ? status.activeJobs : (posts ?? []).filter((p) => !p.done).length;
 	const reconnect = live.filter((a) => a.status === 'reconnect_required').length;
 
 	return (
@@ -104,8 +113,8 @@ function App() {
 				<div className="rail-foot">
 					{config?.demoMode && <span className="chip demo hide-sm" style={{ justifySelf: 'start', marginLeft: 6 }}>Demo mode</span>}
 					{session.noSignIn && <span className="chip warn signin-off" title="Password protection is off (NO_SIGN_IN=true). Only this computer can open the app. Turn sign-in back on before sharing or tunnelling it.">Sign-in off · local only</span>}
-					<WorkerStatus status={status} inFlight={inFlight} />
-					{!session.noSignIn && <button className="ghost-link" aria-label="Sign out" onClick={async () => (await api.signOut(), location.reload())}><Icon.out /> <span>Sign out</span></button>}
+					<WorkerStatus status={status} inFlight={inFlight} desktop={Boolean(session.desktop)} />
+					{!session.noSignIn && !session.desktop && <button className="ghost-link" aria-label="Sign out" onClick={async () => (await api.signOut(), location.reload())}><Icon.out /> <span>Sign out</span></button>}
 				</div>
 			</nav>
 			<main className="main">
@@ -174,19 +183,21 @@ function ago(ms: number) {
 }
 
 /** Shows whether the background worker has checked in recently, not merely whether the web server answers. */
-function WorkerStatus({ status, inFlight }: { status: Status | null; inFlight: number }) {
+function WorkerStatus({ status, inFlight, desktop }: { status: Status | null; inFlight: number; desktop: boolean }) {
 	const w = status?.worker;
 	const state = !status ? 'unknown' : w!.state;
 	const since = w?.lastSeenAt && status ? ago(status.now - w.lastSeenAt) : null;
 	const label = state === 'running' ? (inFlight ? `${inFlight} publishing` : 'Worker running') : state === 'stale' ? 'Worker not responding' : state === 'never' ? 'Worker not started' : 'Status unknown';
 	const tip =
 		state === 'running'
-			? `Background worker checked in ${since} ago. Jobs keep going with this tab closed, as long as this computer and the app stay running.`
+			? desktop
+				? `Backend and worker are running (worker checked in ${since} ago). Jobs continue with the window closed, but stop while Publisher is quit or the Mac is asleep; they resume on next launch.`
+				: `Background worker checked in ${since} ago. Jobs keep going with this tab closed, as long as this computer and the app stay running.`
 			: state === 'stale'
-				? `The background worker last checked in ${since} ago. Queued posts will wait until it runs again (restart the app with npm run dev).`
+				? `The background worker last checked in ${since} ago. Queued posts wait until it runs again. ${desktop ? 'Publisher restarts it automatically; if this persists, quit and reopen the app (Help → Reveal Logs in Finder).' : 'Restart the app with npm run dev.'}`
 				: state === 'never'
-					? 'The background worker has never checked in. Start the app with npm run dev; posts wait until it runs.'
-					: 'Could not read the worker status.';
+					? `The background worker has never checked in. ${desktop ? 'Quit and reopen Publisher.' : 'Start the app with npm run dev.'} Posts wait until it runs.`
+					: `The backend is not responding, so worker status is unknown.${desktop ? ' Publisher restarts it automatically.' : ''}`;
 	return (
 		<div className={`live ${state === 'running' ? (inFlight ? 'busy' : '') : 'down'}`} title={tip} role="status" aria-label={`${label}. ${tip}`}>
 			<span className="dot" />

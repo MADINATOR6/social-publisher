@@ -4,7 +4,7 @@ import { accessToken, getAccount, markAccount } from './accounts.js';
 import { addEvent, claimNext, finish, getTarget, heartbeat, patchTarget, scheduleRetry, unknownOutcomeMessage } from './jobs.js';
 import { adapterFor } from './platforms/index.js';
 import type { MediaRow, Outcome, PublishContext, TargetRow } from './platforms/types.js';
-import { AttentionError, AuthError, PermanentError, RejectedError, TransientError } from './platforms/types.js';
+import { AttentionError, AuthError, MissingMediaError, PermanentError, RejectedError, TransientError } from './platforms/types.js';
 import { config } from './config.js';
 
 export type RunnerOptions = { sleep?: (ms: number) => Promise<void> };
@@ -17,10 +17,6 @@ export async function runTarget(t: TargetRow, owner: string, opts: RunnerOptions
 	const account = getAccount(t.account_id);
 	if (!account) return finish(t.id, 'failed', { error: 'Account no longer exists' });
 	if (Boolean(account.is_demo) !== Boolean(post.is_demo)) return finish(t.id, 'failed', { error: 'Demo and real posts cannot be mixed' });
-	if (!fs.existsSync(media.path)) {
-		if (t.uncertain) return finish(t.id, 'needs_attention', { error: unknownOutcomeMessage(t.platform, 'the local video file has since been cleaned up') });
-		return finish(t.id, 'failed', { error: 'The uploaded video file is missing (it may have been cleaned up). Upload it again.' });
-	}
 
 	const adapter = adapterFor(t.platform, Boolean(account.is_demo));
 	const sleep = opts.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
@@ -48,6 +44,10 @@ export async function runTarget(t: TargetRow, owner: string, opts: RunnerOptions
 			await sleep(ms);
 		},
 		postCreatedAt: post.created_at,
+		// The file is checked only when bytes must be sent, so status checks still work after cleanup.
+		needFile() {
+			if (!fs.existsSync(media.path)) throw new MissingMediaError('The uploaded video file is no longer on this computer (it was cleaned up after the retention period). Upload it again in a new post.');
+		},
 	};
 
 	let reconciling = false;
@@ -86,7 +86,7 @@ export async function runTarget(t: TargetRow, owner: string, opts: RunnerOptions
 			// A refused status lookup is not proof the earlier upload failed.
 			if (mayExist) {
 				ctx.save({ uncertain: true });
-				finish(t.id, 'needs_attention', { error: unknownOutcomeMessage(t.platform, msg) });
+				finish(t.id, 'needs_attention', { error: unknownOutcomeMessage(t.platform, e instanceof MissingMediaError ? 'the local video was cleaned up, so the upload cannot be continued' : msg) });
 			} else finish(t.id, 'failed', { error: msg });
 		} else {
 			// Unknown errors are treated as uncertain: check with the platform before retrying.

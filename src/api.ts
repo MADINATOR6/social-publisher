@@ -48,6 +48,7 @@ export const api = {
 	savePublicUrl: (url: string) => call<Setup>('PUT', '/api/setup/public-url', { publicBaseUrl: url }),
 	status: () => call<Status>('GET', '/api/status'),
 	media: (id: string) => call<Media>('GET', `/api/media/${encodeURIComponent(id)}`),
+	beginOAuth: (p: Platform) => call<{ url: string }>('POST', `/api/oauth/${p}/begin`),
 	verify: (accountId: string) => call<Verify>('POST', `/api/accounts/${accountId}/verify`),
 	posts: () => call<Post[]>('GET', '/api/posts'),
 	post: (id: string) => call<Post>('GET', `/api/posts/${id}`),

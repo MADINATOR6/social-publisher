@@ -5,6 +5,7 @@ import { getDb, workerBeat } from './db.js';
 import './settings.js';
 import { randomId } from './crypto.js';
 import { cleanupMedia, tick } from './runner.js';
+import { releaseLeases } from './jobs.js';
 
 assertSecrets();
 getDb();
@@ -22,8 +23,23 @@ const beat = () => {
 };
 beat();
 const beatTimer = setInterval(beat, 10_000);
-process.on('SIGINT', () => (stopping = true));
-process.on('SIGTERM', () => (stopping = true));
+// Stop promptly: hand unfinished jobs back (marked to check first) and exit, rather than wait for a long upload.
+const parent = (process as any).parentPort as { postMessage(m: unknown): void; on(e: 'message', f: (e: { data: any }) => void): void } | undefined;
+function stopNow(reason: string) {
+	if (stopping) return;
+	stopping = true;
+	try {
+		const n = releaseLeases(owner);
+		console.log(`[worker] ${reason}: paused ${n} job(s); they resume on next start`);
+	} catch (e: any) {
+		console.error('[worker] could not release jobs:', e?.message ?? e);
+	}
+	process.exit(0);
+}
+process.on('SIGINT', () => stopNow('interrupted'));
+process.on('SIGTERM', () => stopNow('stopping'));
+parent?.on('message', (e) => e.data?.type === 'stop' && stopNow('app is quitting'));
+parent?.postMessage({ type: 'ready' });
 
 while (!stopping) {
 	try {

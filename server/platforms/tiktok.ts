@@ -110,6 +110,7 @@ export const tiktok: Adapter = {
 		const size = ctx.media.size;
 
 		if (!ctx.ref.publishId || !ctx.ref.uploaded) {
+			ctx.needFile();
 			const plan = chunkPlan(size);
 			const source_info = { source: 'FILE_UPLOAD', video_size: size, chunk_size: plan.chunkSize, total_chunk_count: plan.count };
 			let body: any = { source_info };

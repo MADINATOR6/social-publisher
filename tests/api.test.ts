@@ -241,3 +241,43 @@ describe('in-app platform keys', () => {
 		expect((await app.inject({ method: 'PUT', url: '/api/setup/youtube', payload: { id: 'a', secret: 'b' } })).statusCode).toBe(401);
 	});
 });
+
+describe('desktop app mode', () => {
+	const TOKEN = 'd'.repeat(43);
+	beforeEach(() => {
+		process.env.SP_DESKTOP = '1';
+		config.desktopToken = TOKEN;
+	});
+	afterEach(() => {
+		delete process.env.SP_DESKTOP;
+		config.desktopToken = '';
+	});
+	const as = (c?: string) => (url: string) => app.inject({ method: 'GET', url, headers: c ? { cookie: c } : {} });
+
+	it('only lets in the window holding the per-launch cookie; loopback alone is not enough', async () => {
+		expect((await as()('/api/accounts')).statusCode).toBe(401);
+		expect((await as('sp_desktop=wrong')('/api/accounts')).statusCode).toBe(401);
+		expect((await as(cookie)('/api/accounts')).statusCode).toBe(401); // a password session does not count
+		expect((await as(`sp_desktop=${TOKEN}`)('/api/accounts')).statusCode).toBe(200);
+		expect((await app.inject({ method: 'POST', url: '/api/session', payload: { password: 'test-password-123' } })).statusCode).toBe(403);
+	});
+
+	it('hands sign-in to the system browser with one-use server-side state, and answers there with a page', async () => {
+		const begin = await app.inject({ method: 'POST', url: '/api/oauth/youtube/begin', headers: { cookie: `sp_desktop=${TOKEN}`, ...H } });
+		expect(begin.statusCode).toBe(200);
+		const url = new URL(begin.json().url);
+		const state = url.searchParams.get('state')!;
+		expect(url.searchParams.get('code_challenge_method')).toBe('S256');
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async (u: any) =>
+			String(u).includes('oauth2.googleapis.com/token')
+				? new Response(JSON.stringify({ access_token: 'at', refresh_token: 'rt', expires_in: 3600 }), { status: 200 })
+				: new Response(JSON.stringify({ items: [{ id: 'UC1', snippet: { title: 'My Channel', thumbnails: {} } }] }), { status: 200 }),
+		);
+		// The callback arrives from the system browser: no app cookie at all.
+		const cb = await app.inject({ method: 'GET', url: `/api/oauth/youtube/callback?code=abc&state=${state}` });
+		expect(cb.statusCode).toBe(200);
+		expect(cb.body).toContain('Connected My Channel');
+		const again = await app.inject({ method: 'GET', url: `/api/oauth/youtube/callback?code=abc&state=${state}` });
+		expect(again.body).toContain('expired or did not match');
+	});
+});

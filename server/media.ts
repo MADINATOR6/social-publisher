@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { config } from './config.js';
 import { promisify } from 'node:util';
 import type { Platform } from './db.js';
 
@@ -18,7 +19,7 @@ export type MediaInfo = {
 /** Reads real stream facts with ffprobe. Returns nulls when ffprobe is missing. */
 export async function probe(file: string, size: number): Promise<MediaInfo> {
 	try {
-		const { stdout } = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration,format_name:stream=codec_type,codec_name,width,height,avg_frame_rate', '-of', 'json', file]);
+		const { stdout } = await run(config.ffprobePath, ['-v', 'error', '-show_entries', 'format=duration,format_name:stream=codec_type,codec_name,width,height,avg_frame_rate', '-of', 'json', file]);
 		const j = JSON.parse(stdout);
 		const v = j.streams?.find((s: any) => s.codec_type === 'video');
 		const a = j.streams?.find((s: any) => s.codec_type === 'audio');

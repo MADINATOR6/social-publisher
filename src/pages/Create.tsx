@@ -4,6 +4,7 @@ import { Avatar, FieldError, Icon, PlatformMark, Seg, Toggle } from '../ui';
 import { clearDraft, loadDraft, saveDraft } from '../draft';
 import { issuesFor, Readiness, TIKTOK_INBOX_LABEL } from './Readiness';
 import { PublishStatus } from './Results';
+import { desktop } from '../desktop';
 
 type Settings = Record<string, any>;
 const newKey = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -118,6 +119,28 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 		const u = uploadVideo(f, (p) => setUpload((s) => ({ ...s, progress: p })));
 		abortRef.current = u.abort;
 		u.promise.then((m) => setUpload({ progress: 1, status: 'done', media: m })).catch((e: ApiError) => setUpload({ progress: 0, status: 'error', error: e.message }));
+	}
+
+	/** In the desktop app, use the native macOS picker; the main process streams the file to the local server. */
+	async function chooseFile() {
+		if (!desktop) return inputRef.current?.click();
+		if (upload.status === 'uploading' || locked) return;
+		abortRef.current();
+		const before = upload;
+		setUpload({ progress: 0, status: 'uploading' });
+		const r = await desktop.pickVideo((p) => setUpload((s) => (s.status === 'uploading' ? { ...s, progress: p } : s)));
+		if (r.canceled) return setUpload(before);
+		if ('error' in r) return setUpload({ progress: 0, status: 'error', error: r.error });
+		revoke(preview);
+		setNotice(null);
+		setFile(null);
+		setPreview(r.media.previewUrl ?? null);
+		setIssues([]);
+		setFormError(null);
+		setPost(null);
+		setKey(newKey());
+		setSettings((s) => Object.fromEntries(Object.entries(s).map(([id, v]) => [id, v.title !== undefined && !v.titleTouched ? { ...v, title: defaults('youtube', r.filename).title } : v])));
+		setUpload({ progress: 1, status: 'done', media: r.media });
 	}
 
 	function toggle(a: Account) {
@@ -272,7 +295,7 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 								</div>
 							</>
 						) : (
-							<div className="drop" role="button" tabIndex={0} onClick={() => inputRef.current?.click()} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && inputRef.current?.click()}>
+							<div className="drop" role="button" tabIndex={0} onClick={() => chooseFile()} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && chooseFile()}>
 								<div>
 									<div className="ico"><Icon.upload /></div>
 									<h2>Drop your video</h2>
@@ -297,7 +320,7 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 				{upload.status === 'restoring' && <span className="chip">Finding your draft's video…</span>}
 				{(file || media) && !locked && (
 					<div className="row" style={{ gap: 6 }}>
-						<button className="btn sm" onClick={() => inputRef.current?.click()}>Replace</button>
+						<button className="btn sm" onClick={() => chooseFile()}>Replace</button>
 						{upload.status === 'uploading' && <button className="btn sm quiet" onClick={() => abortRef.current()}>Cancel upload</button>}
 					</div>
 				)}
@@ -386,7 +409,7 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 								media={media}
 								verify={verify}
 								onVerify={checkConnection}
-								onFix={(a, fix) => (fix === 'accounts' ? go('/accounts') : fix === 'video' ? inputRef.current?.click() : (setTab(a.id), setPreviewAs(a.platform)))}
+								onFix={(a, fix) => (fix === 'accounts' ? go('/accounts') : fix === 'video' ? chooseFile() : (setTab(a.id), setPreviewAs(a.platform)))}
 							/>
 						</div>
 					)}

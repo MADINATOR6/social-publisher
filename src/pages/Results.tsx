@@ -101,7 +101,7 @@ export function PublishStatus({ post, onUpdate, onNew, go }: { post: Post; onUpd
 				<span className="dot" style={{ background: !post.done ? 'var(--ember)' : failed.length ? 'var(--bad)' : needs ? 'var(--wait)' : 'var(--ok)', width: 8, height: 8 }} />
 				<b>{headline}</b>
 				{post.isDemo && <span className="chip demo">Simulated</span>}
-				<span className="faint grow ellipsis">{!post.done ? 'Keeps going with this tab closed' : post.isDemo ? 'Nothing was actually posted' : `${live} of ${post.targets.length} confirmed live`}</span>
+				<span className="faint grow ellipsis">{!post.done ? 'Keeps going with the window closed' : post.isDemo ? 'Nothing was actually posted' : `${live} of ${post.targets.length} confirmed live`}</span>
 			</div>
 			{post.targets.map((t) => <TargetRow key={t.id} t={t} demo={post.isDemo} mediaDeleted={post.media.deleted} busy={busy} onAction={act} />)}
 			{error && <div className="err" role="alert" style={{ padding: '0 18px 10px' }}>{error}</div>}
@@ -114,7 +114,7 @@ export function PublishStatus({ post, onUpdate, onNew, go }: { post: Post; onUpd
 					{onNew && post.done && <button className="btn sm primary" onClick={onNew}>Create another post</button>}
 				</div>
 			)}
-			{!post.done && <div className="hint" style={{ padding: '0 18px 12px', marginTop: 0 }}>You can close this tab. The background worker keeps going as long as this computer and the app stay running.</div>}
+			{!post.done && <div className="hint" style={{ padding: '0 18px 12px', marginTop: 0 }}>You can close this window. Jobs keep going while Publisher runs, pause while it is quit or the Mac sleeps, and resume on the next launch.</div>}
 		</div>
 	);
 }

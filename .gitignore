@@ -30,3 +30,7 @@ data/
 
 # Local editor/agent settings
 .claude/
+
+# Desktop build output
+dist-desktop/
+release/

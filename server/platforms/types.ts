@@ -84,6 +84,8 @@ export interface PublishContext {
 	log(message: string): void;
 	sleep(ms: number): Promise<void>;
 	postCreatedAt: number;
+	/** Call before anything that needs the local video bytes. Throws MissingMediaError if it was cleaned up. */
+	needFile(): void;
 }
 
 export interface Availability {
@@ -123,6 +125,8 @@ export class PermanentError extends Error {
 }
 /** The platform itself confirmed the upload failed or was rejected, so a fresh upload cannot duplicate it. */
 export class RejectedError extends PermanentError {}
+/** The local video is gone, so bytes cannot be sent. Status checks that need no file are unaffected. */
+export class MissingMediaError extends PermanentError {}
 /** The account needs to be reconnected. */
 export class AuthError extends Error {
 	constructor(message: string) {

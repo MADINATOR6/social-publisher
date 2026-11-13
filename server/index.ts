@@ -7,4 +7,5 @@ assertSecrets();
 getDb();
 const app = await buildApp({ logger: true });
 await app.listen({ port: config.port, host: '127.0.0.1' });
+(process as any).parentPort?.postMessage({ type: 'ready', port: config.port });
 console.log(`[api] listening on http://127.0.0.1:${config.port}${config.demoMode ? '  (DEMO MODE: publishing is simulated)' : ''}${config.noSignIn ? '  (sign-in turned off)' : ''}`);

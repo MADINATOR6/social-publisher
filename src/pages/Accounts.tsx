@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { desktop, openSignIn } from '../desktop';
 import { api, ApiError, fmtTime, PLATFORM_NAME, type Account, type Config, type Issue, type Platform, type Setup } from '../api';
 import { Avatar, FieldError, Icon, PlatformMark } from '../ui';
 
@@ -11,10 +12,12 @@ const GUIDE: Record<Platform, { where: string; steps: (s: Setup['platforms'][Pla
 			{ text: 'Create a project (any name).', link: ['Open Google Cloud', 'https://console.cloud.google.com/projectcreate'] },
 			{ text: 'Turn on the YouTube Data API v3 for that project.', link: ['Open the API page', 'https://console.cloud.google.com/apis/library/youtube.googleapis.com'] },
 			{ text: <>Set up the consent screen: choose <b>External</b>, then under <b>Audience</b> add your own Google account as a test user.</>, link: ['Open consent setup', 'https://console.cloud.google.com/auth/overview'] },
-			{ text: <>Create a client of type <b>Web application</b> and add the address below as an <b>Authorized redirect URI</b>.</>, link: ['Create the client', 'https://console.cloud.google.com/auth/clients/create'] },
+			desktop
+				? { text: <>Create a client of type <b>Desktop app</b>. No redirect address is needed: Google accepts this app's local sign-in address automatically.</>, link: ['Create the client', 'https://console.cloud.google.com/auth/clients/create'] }
+				: { text: <>Create a client of type <b>Web application</b> and add the address below as an <b>Authorized redirect URI</b>.</>, link: ['Create the client', 'https://console.cloud.google.com/auth/clients/create'] },
 			{ text: 'Paste the Client ID and Client secret here.' },
 		],
-		note: 'While the consent screen is in Testing, Google asks you to reconnect every 7 days. Click "Publish app" under Audience to stop that. Verification is not needed for your own use.',
+		note: `While the consent screen is in Testing, Google asks you to reconnect every 7 days. Click "Publish app" under Audience to stop that. Verification is not needed for your own use.${desktop ? ' Google treats a Desktop app client secret as not confidential; it is stored encrypted on this Mac, but keep the client for your own use only.' : ''}`,
 	},
 	instagram: {
 		where: 'Meta for Developers',
@@ -108,10 +111,12 @@ function SetupPanel({ p, setup, onSaved, onClose }: { p: Platform; setup: Setup;
 				))}
 			</ol>
 			<div className="setup-form">
-				<label className="f">
-					<span>Redirect address. Paste this into {g.where}.</span>
-					<Copy text={info.redirectUri} />
-				</label>
+				{!(desktop && p === 'youtube') && (
+					<label className="f">
+						<span>Redirect address. Paste this into {g.where}.</span>
+						<Copy text={info.redirectUri} />
+					</label>
+				)}
 				<label className="f">
 					<span>{info.idLabel}</span>
 					<input className={`field mono ${issues.some((i) => i.field === 'id') ? 'bad' : ''}`} value={id} onChange={(e) => setId(e.target.value)} placeholder={info.idPreview ? `Saved: ${info.idPreview}` : p === 'youtube' ? '1234567890-abc….apps.googleusercontent.com' : ''} autoComplete="off" spellCheck={false} />
@@ -177,11 +182,28 @@ export function AccountsPage({ accounts, config, refresh, refreshConfig }: { acc
 		refreshConfig();
 	}
 
+	async function connectPlatform(p: Platform) {
+		try {
+			const { url } = await api.beginOAuth(p);
+			await openSignIn(url);
+			if (desktop) setBanner({ tone: 'ok', text: `Finish signing in to ${PLATFORM_NAME[p]} in your browser, then come back here. The account appears automatically.` });
+		} catch (e: any) {
+			setBanner({ tone: 'bad', text: e.message });
+		}
+	}
+
+	// Sign-in finishes in the system browser; refresh when the window regains focus.
+	useEffect(() => {
+		const on = () => refresh();
+		addEventListener('focus', on);
+		return () => removeEventListener('focus', on);
+	}, []);
+
 	function saved(p: Platform, s: Setup, connect: boolean) {
 		setSetup(s);
 		setEditing(null);
 		refreshConfig();
-		if (connect) location.href = `/api/oauth/${p}/start`;
+		if (connect) connectPlatform(p);
 		else setBanner({ tone: 'ok', text: `${PLATFORM_NAME[p]} keys saved. Click Connect when you are ready.` });
 	}
 
@@ -218,7 +240,7 @@ export function AccountsPage({ accounts, config, refresh, refreshConfig }: { acc
 								<small>{info.configured ? short : 'Not set up yet · about 5 minutes'}</small>
 							</div>
 							{info.configured ? (
-								!open && <a className={`btn sm ${real.length ? '' : 'primary'}`} href={`/api/oauth/${p}/start`}>{real.length ? 'Add another' : 'Connect'}</a>
+								!open && <button className={`btn sm ${real.length ? '' : 'primary'}`} onClick={() => connectPlatform(p)}>{real.length ? 'Add another' : 'Connect'}</button>
 							) : (
 								<button className={`btn sm ${open || p !== firstUnset ? '' : 'primary'}`} onClick={() => setEditing(open ? null : p)}>{open ? 'Close' : 'Set up'}</button>
 							)}
@@ -247,7 +269,7 @@ export function AccountsPage({ accounts, config, refresh, refreshConfig }: { acc
 										{a.status === 'connected' ? `Connected ${fmtTime(a.connectedAt)}` : a.statusDetail ?? 'Needs reconnecting'}
 									</div>
 								</div>
-								{!a.isDemo && info.configured && a.status !== 'connected' && <a className="btn sm primary" href={`/api/oauth/${p}/start`}><Icon.retry /> Reconnect</a>}
+								{!a.isDemo && info.configured && a.status !== 'connected' && <button className="btn sm primary" onClick={() => connectPlatform(p)}><Icon.retry /> Reconnect</button>}
 								<button className="btn sm quiet danger" disabled={busy === a.id} onClick={() => disconnect(a)}>Disconnect</button>
 							</div>
 						))}

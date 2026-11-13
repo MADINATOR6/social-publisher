@@ -97,6 +97,7 @@ export const instagram: Adapter = {
 		const igId = ctx.account.external_id;
 
 		if (!ctx.ref.containerId) {
+			ctx.needFile();
 			const limit = await json(`${G()}/${igId}/content_publishing_limit?fields=quota_usage,config`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null);
 			const used = limit?.data?.[0]?.quota_usage;
 			const total = limit?.data?.[0]?.config?.quota_total;

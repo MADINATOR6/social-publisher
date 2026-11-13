@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-// Minimal .env loader so the app runs with no extra dependency.
+// Minimal .env loader for development. The desktop app never reads .env: its main process
+// passes settings to the services directly (SP_DESKTOP=1).
 const envFile = path.resolve(process.cwd(), '.env');
-if (fs.existsSync(envFile)) {
+if (!process.env.SP_DESKTOP && fs.existsSync(envFile)) {
 	for (const line of fs.readFileSync(envFile, 'utf8').split('\n')) {
 		const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
 		if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
@@ -30,6 +31,13 @@ export const config = {
 	demoMode: flag('DEMO_MODE'),
 	// Owner testing on this computer only: skips the password screen. The API still only listens on 127.0.0.1.
 	noSignIn: flag('NO_SIGN_IN'),
+	/** Desktop app: a per-launch secret the main process places in its own window's cookie jar. */
+	desktopToken: env('DESKTOP_TOKEN'),
+	get desktop() {
+		return Boolean(process.env.SP_DESKTOP);
+	},
+	uiDist: path.resolve(env('UI_DIST', 'dist')),
+	ffprobePath: env('FFPROBE_PATH', 'ffprobe'),
 	mediaRetentionHours: Number(env('MEDIA_RETENTION_HOURS', '72')),
 	maxUploadBytes: Number(env('MAX_UPLOAD_MB', '4096')) * 1024 * 1024,
 	tiktok: {
@@ -61,7 +69,16 @@ export const config = {
 	},
 };
 
-export const redirectUri = (platform: string) => `${config.appUrl.replace(/\/$/, '')}/api/oauth/${platform}/callback`;
+/**
+ * Where each platform sends the browser back after sign-in.
+ * YouTube: Google accepts loopback addresses (any port) for "Desktop app" clients, so the local server works.
+ * Instagram and TikTok require registered HTTPS addresses, so they use PUBLIC_BASE_URL (a tunnel) when set.
+ */
+export const redirectUri = (platform: string) => {
+	const pub = config.publicBaseUrl;
+	const base = platform !== 'youtube' && /^https:\/\//.test(pub) ? pub : config.appUrl;
+	return `${base.replace(/\/$/, '')}/api/oauth/${platform}/callback`;
+};
 
 export const configured = {
 	tiktok: () => Boolean(config.tiktok.clientKey && config.tiktok.clientSecret),
@@ -70,7 +87,8 @@ export const configured = {
 };
 
 export function assertSecrets() {
-	const missing = [...(config.noSignIn ? [] : ['APP_PASSWORD']), 'SESSION_SECRET', 'TOKEN_ENCRYPTION_KEY'].filter((k) => !process.env[k]);
+	const access = config.desktop ? ['DESKTOP_TOKEN'] : config.noSignIn ? [] : ['APP_PASSWORD'];
+	const missing = [...access, 'SESSION_SECRET', 'TOKEN_ENCRYPTION_KEY'].filter((k) => !process.env[k]);
 	if (missing.length) {
 		throw new Error(`Missing required settings: ${missing.join(', ')}. Copy .env.example to .env and fill them in.`);
 	}

@@ -100,6 +100,20 @@ export function finish(id: string, state: TargetState, fields: { permalink?: str
 		.run({ state, permalink: fields.permalink ?? null, error: fields.error ? redact(fields.error) : null, rid: fields.remoteId ?? null, clear, t: now(), id });
 }
 
+/**
+ * Called when the worker is told to stop (app quit). Hands its in-flight targets back to the queue,
+ * marked so the next start checks with the platform before sending anything again.
+ */
+export function releaseLeases(owner: string) {
+	const db = getDb();
+	const rows = db.prepare("SELECT id FROM targets WHERE lease_owner = ? AND state IN ('queued','uploading','processing')").all(owner) as { id: string }[];
+	for (const r of rows) {
+		db.prepare("UPDATE targets SET state = 'queued', uncertain = CASE WHEN provider_ref IS NOT NULL OR remote_id IS NOT NULL OR phase IS NOT NULL THEN 1 ELSE uncertain END, lease_owner = NULL, lease_until = NULL, next_run_at = ?, updated_at = ? WHERE id = ?").run(now(), now(), r.id);
+		addEvent(r.id, 'Paused because the app quit. It will check with the platform and continue on the next start.');
+	}
+	return rows.length;
+}
+
 /** Where the owner should look when the app cannot tell whether a post went through. */
 export const CHECK_WHERE: Record<string, string> = {
 	youtube: 'YouTube Studio → Content',
