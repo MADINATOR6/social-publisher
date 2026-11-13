@@ -9,7 +9,6 @@ const ORDER: Platform[] = ['youtube', 'instagram', 'tiktok'];
 
 const fmt = (n: number | null | undefined) => (n == null || Number.isNaN(n) ? '–' : Intl.NumberFormat(undefined, { notation: Math.abs(n) >= 10_000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(n));
 const pct = (n: number) => `${(n * 100).toFixed(n >= 0.1 ? 0 : 1)}%`;
-const flag = (code: string) => (/^[A-Z]{2}$/.test(code) ? String.fromCodePoint(...[...code].map((c) => 0x1f1a5 + c.charCodeAt(0))) : '');
 const countryName = (code: string) => {
 	try {
 		return new Intl.DisplayNames(undefined, { type: 'region' }).of(code) ?? code;
@@ -120,7 +119,7 @@ const TILES: Tile[] = [
 function valueOf(s: Stats, key: string): number | null {
 	if (key === 'followers') return s.followers;
 	const v = s.totals[key];
-	return typeof v === 'number' ? (key === 'watchMinutes' ? v / 60 : v) : null;
+	return typeof v === 'number' ? (key === 'watchMinutes' ? Math.round(v / 60) : v) : null;
 }
 
 function Tiles({ list, single }: { list: Stats[]; single: boolean }) {
@@ -137,15 +136,15 @@ function Tiles({ list, single }: { list: Stats[]; single: boolean }) {
 						<div className="tile-body">
 							<span className="tile-label">{t.label}</span>
 							<b className="tile-num">{fmt(total)}</b>
-							<span className="tile-sub">
+							<span className="tile-sub" title={parts.map((p) => `${PLATFORM_NAME[p.s.platform]} ${fmt(p.v)}`).join(' · ')}>
 								{!single && parts.length > 1
 									? parts.map((p) => `${PLATFORM_NAME[p.s.platform]} ${fmt(p.v)}`).join(' · ')
 									: parts.length < list.length && !single
 										? `${parts.map((p) => PLATFORM_NAME[p.s.platform]).join(', ')} only`
 										: t.sub ?? (t.key === 'followers' ? 'now' : 'this period')}
 							</span>
+							{spark && spark.length > 1 && <Spark values={spark} color={PLATFORM_COLOR[list[0].platform]} />}
 						</div>
-						{spark && spark.length > 1 && <Spark values={spark} color={PLATFORM_COLOR[list[0].platform]} />}
 					</div>
 				);
 			})}
@@ -159,8 +158,8 @@ function Spark({ values, color }: { values: number[]; color: string }) {
 	const max = Math.max(1, ...values);
 	const pts = values.map((v, i) => `${((i / (values.length - 1)) * w).toFixed(1)},${(h - 2 - (v / max) * (h - 4)).toFixed(1)}`);
 	return (
-		<svg className="spark" width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden>
-			<polyline points={pts.join(' ')} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+		<svg className="spark" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden>
+			<polyline points={pts.join(' ')} fill="none" stroke={color} strokeWidth={2} vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
 		</svg>
 	);
 }
@@ -221,7 +220,7 @@ function Trend({ list, days }: { list: Stats[]; days: number }) {
 								<text x={pad.l - 8} y={y(t) + 4} className="axis" textAnchor="end">{fmt(t)}</text>
 							</g>
 						))}
-						{dates.map((d, i) => (i % every === 0 || i === dates.length - 1 ? <text key={d} x={x(i)} y={H - 6} className="axis" textAnchor="middle">{shortDate(d)}</text> : null))}
+						{dates.map((d, i) => (i % every === 0 || i === dates.length - 1 ? <text key={d} x={x(i)} y={H - 6} className="axis" textAnchor={i === 0 ? 'start' : i === dates.length - 1 ? 'end' : 'middle'}>{shortDate(d)}</text> : null))}
 						{series.map((s) => {
 							const v = vals(s);
 							const line = v.map((n, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(n).toFixed(1)}`).join(' ');
@@ -268,7 +267,7 @@ function Countries({ s, showName }: { s: Stats; showName: boolean }) {
 			</div>
 			{s.countries.map((c) => (
 				<div className="bar-row" key={c.code} title={`${countryName(c.code)}: ${fmt(c.value)} ${s.countriesOf}`}>
-					<span className="bar-name"><span className="flag">{flag(c.code)}</span><span className="ellipsis">{countryName(c.code)}</span></span>
+					<span className="bar-name"><span className="ellipsis">{countryName(c.code)}</span></span>
 					<span className="bar-track"><i style={{ width: `${(c.share / top) * 100}%`, background: PLATFORM_COLOR[s.platform] }} /></span>
 					<span className="bar-val mono">{pct(c.share)}</span>
 				</div>

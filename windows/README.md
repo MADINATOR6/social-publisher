@@ -7,7 +7,7 @@ Requirements: Windows 10 or 11 (x64), Node 22.13 or later, Rust (stable, MSVC to
 
 ```
 npm install
-npm run windows:test     # 38 Rust tests, all against a local stand-in for the platform APIs
+npm run windows:test     # 50 Rust tests, all against a local stand-in for the platform APIs
 npm run windows:build    # builds the UI, then windows\target\release\Publisher.exe
 npm run windows:run
 ```
@@ -30,6 +30,16 @@ npm run windows:build
 - **Instagram:** Instagram Login can only publish a Reel from a public link. With no tunnel set, the app uploads the video to the relay's temporary storage in 50 MB parts, gives Instagram a signed link valid for 6 hours, and deletes the copy as soon as Instagram reports it has the video. The relay deletes anything left over after 24 hours.
 - Developer keys saved in the app still win for their platform. **Use my own developer keys** at the bottom of Connected accounts shows them, so sandbox testing keeps working.
 - `relayUrl` in `%APPDATA%\Publisher\settings.json` overrides the built-in address for one PC (`""` turns it off).
+
+## Extras in the Windows app
+The Windows backend lists these in `/api/config` under `features`. The shared interface only shows a feature that is listed, so the Mac app looks and works as before.
+- **Stats** (`analytics`): followers, views, likes, comments, shares, watch time and saves, daily audience, audience countries, age and gender, and top posts, per account or all together. It needs the stats permissions, so accounts connected earlier are asked to reconnect. TikTok does not give apps audience countries or daily numbers.
+- **Scheduled publishing** (`schedule`): pick a date and time in Create post. Publisher must be running then; it can stay in the notification area.
+- **Notifications** (`notifications`): a Windows notification and a sound when a post finishes, with an on/off button in the sidebar.
+- **I posted it** (`markPosted`): marks a TikTok inbox draft as posted, with an optional link.
+- **Post again** (`repost`): copies a finished post from Post history into Create post.
+- **Cover images** (`covers`): a YouTube thumbnail (needs a verified channel) and an Instagram cover. TikTok sets its cover in the app.
+- **Click sounds**: the Ethereal Enchantment sounds, with a Sounds on/off button.
 
 ## How it is put together
 | Part | Mac app | Windows app |
@@ -67,7 +77,7 @@ Measured on the development PC (Windows 11, release build):
 - **After a crash:** interrupted jobs resume as soon as the app starts (only one copy can run, so old leases are known to be dead) instead of after the 60-second lease runs out. They are still flagged to check with the platform first.
 
 ## Checked
-- `npm run windows:test`: 38 of 38 pass. They cover the reconcile safety rules ported from `tests/reconcile.test.ts`, the queue, the API lock-down, upload and demo publishing, key storage, opening a value encrypted by the Node server, and the relay flows (connect with PKCE, refresh, revoke, expired sign-in, Instagram through hosted storage).
+- `npm run windows:test`: 50 of 50 pass, including scheduling, notifications, marking a TikTok draft posted, cover images and stats. They cover the reconcile safety rules ported from `tests/reconcile.test.ts`, the queue, the API lock-down, upload and demo publishing, key storage, opening a value encrypted by the Node server, and the relay flows (connect with PKCE, refresh, revoke, expired sign-in, Instagram through hosted storage).
 - `npm run relay:test`: 15 of 15 pass for the relay itself (redirect safety, code exchange, error pass-through, signed media links with byte ranges, the 24-hour sweep, the public pages).
 - With a relay address set, the release build's Connected accounts screen shows only **Connect** buttons, and Connect points at the relay with the app's port.
 - Release build driven through its real window (WebView2 debugging port): bridge present, cookie not readable by the page, demo accounts added, a real MP4 uploaded through the page and previewed, a demo post published to all three destinations, history kept across launches.
