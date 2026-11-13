@@ -5,7 +5,7 @@ import { Icon, PlatformMark, Steps } from '../ui';
 import { toLocalInput } from './Create';
 
 type Tone = 'ok' | 'wait' | 'bad' | 'busy' | 'idle' | 'sim';
-export type Action = 'open' | 'check' | 'retry' | 'reconnect' | 'reupload' | null;
+export type Action = 'open' | 'check' | 'retry' | 'reconnect' | 'reupload' | 'posted' | null;
 export type Described = { label: string; tone: Tone; explain: string; action: Action };
 
 const WHERE: Record<Target['platform'], string> = { youtube: 'YouTube Studio → Content', instagram: 'your Instagram profile', tiktok: 'your TikTok inbox' };
@@ -35,7 +35,7 @@ export function describe(t: Target, demo: boolean, mediaDeleted = false): Descri
 		case 'needs_attention': {
 			const err = t.error ?? '';
 			if (t.platform === 'tiktok' && /TikTok inbox/i.test(err) && !t.outcomeUnknown)
-				return { label: demo ? 'Simulated · inbox' : 'Finish in TikTok', tone: demo ? 'sim' : 'wait', explain: demo ? 'Simulated. A real post would wait in your TikTok inbox.' : 'Sent to your TikTok inbox. Open TikTok, tap the inbox notification and finish posting there.', action: null };
+				return { label: demo ? 'Simulated · inbox' : 'Finish in TikTok', tone: demo ? 'sim' : 'wait', explain: demo ? 'Simulated. A real post would wait in your TikTok inbox.' : `Sent to your TikTok inbox. Open TikTok, tap the inbox notification and finish posting there.${t.canMarkPosted ? ' Then click I posted it.' : ''}`, action: t.canMarkPosted ? 'posted' : null };
 			if (t.accountStatus === 'reconnect_required' || /^Reconnect /.test(err))
 				return { label: 'Reconnect needed', tone: 'wait', explain: t.outcomeUnknown ? `Sign-in expired before ${name} confirmed the result. Reconnect, then use Check again. Nothing will be uploaded twice.` : err, action: 'reconnect' };
 			if (t.outcomeUnknown) return { label: 'Outcome unknown', tone: 'wait', explain: err || `Check ${WHERE[t.platform]} before posting again.`, action: 'check' };
@@ -68,6 +68,7 @@ export function TargetRow({ t, demo, mediaDeleted, busy, onAction }: { t: Target
 				{d.action === 'check' && onAction && <button className="btn sm" disabled={busy} onClick={() => onAction('check', t)} title="Only asks the platform for the result. Never uploads a second copy."><Icon.retry /> Check again</button>}
 				{d.action === 'retry' && onAction && <button className="btn sm" disabled={busy} onClick={() => onAction('retry', t)}><Icon.retry /> Retry</button>}
 				{d.action === 'reconnect' && onAction && <button className="btn sm" onClick={() => onAction('reconnect', t)}>Reconnect</button>}
+				{d.action === 'posted' && onAction && <button className="btn sm" data-sfx="pop" disabled={busy} onClick={() => onAction('posted', t)} title="You finished this draft in the TikTok app"><Icon.check /> I posted it</button>}
 				{d.action === 'reupload' && <span className="faint" style={{ fontSize: 12 }}>Video cleaned up · upload again</span>}
 			</div>
 		</div>
@@ -86,9 +87,12 @@ export function PublishStatus({ post, onUpdate, onNew, go }: { post: Post; onUpd
 
 	async function act(a: Action, t?: Target) {
 		if (a === 'reconnect') return go('/accounts');
+		const link = a === 'posted' ? askLink() : '';
+		if (link === null) return;
 		setBusy(true);
 		setError(null);
 		try {
+			if (a === 'posted' && t) return onUpdate((await api.markPosted(t.id, link)).post);
 			const ids = t ? [t.id] : failed.map((f) => f.id);
 			onUpdate((await api.retry(post.id, ids)).post);
 		} catch (e: any) {
@@ -160,4 +164,9 @@ export function ScheduleActions({ post, onUpdate }: { post: Post; onUpdate: (p: 
 			{error && <div className="err" role="alert" style={{ width: '100%' }}>{error}</div>}
 		</div>
 	);
+}
+
+/** Asks for the TikTok link after the owner posted a draft by hand. Null when they cancel. */
+export function askLink(): string | null {
+	return prompt('Posted it in TikTok? Paste the link to the post so it opens from here (optional).', '');
 }

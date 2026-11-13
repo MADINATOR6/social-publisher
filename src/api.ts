@@ -9,7 +9,7 @@ export type Config = { demoMode: boolean; publicBaseUrl: boolean; videoHosting?:
 /** Whether the backend offers a feature beyond the original contract (the Windows build lists them; the Mac server lists none). */
 export const has = (c: Config | null | undefined, feature: string) => Boolean(c?.features?.includes(feature));
 export type Media = { id: string; filename: string; size: number; duration: number | null; width: number | null; height: number | null; videoCodec: string | null; audioCodec: string | null; shortsShape: boolean; issues: Record<Platform, string[]>; previewUrl?: string };
-export type Target = { id: string; platform: Platform; account: { name: string; handle: string | null; avatarUrl: string | null; isDemo: boolean }; settings: any; state: State; phase: string | null; progress: number; attempts: number; outcomeUnknown: boolean; accountStatus: string; nextRunAt: number | null; scheduled?: boolean; error: string | null; permalink: string | null; updatedAt: number; events: { at: number; message: string }[] };
+export type Target = { id: string; platform: Platform; account: { name: string; handle: string | null; avatarUrl: string | null; isDemo: boolean }; settings: any; state: State; phase: string | null; progress: number; attempts: number; outcomeUnknown: boolean; accountStatus: string; nextRunAt: number | null; scheduled?: boolean; canMarkPosted?: boolean; error: string | null; permalink: string | null; updatedAt: number; events: { at: number; message: string }[] };
 export type Post = { id: string; caption: string; isDemo: boolean; createdAt: number; scheduledAt?: number | null; scheduled?: boolean; media: { id?: string; filename: string; duration: number | null; width: number | null; height: number | null; size: number; deleted: boolean }; targets: Target[]; done: boolean };
 export type Issue = { field: string; message: string };
 export type Status = { worker: { state: 'running' | 'stale' | 'never'; lastSeenAt: number | null; startedAt: number | null }; activeJobs: number; noSignIn: boolean; demoMode: boolean; now: number };
@@ -60,6 +60,7 @@ export const api = {
 	retry: (id: string, targetIds?: string[]) => call<{ post: Post }>('POST', `/api/posts/${id}/retry`, { targetIds }),
 	/** `at` null publishes now. */
 	schedule: (id: string, at: number | null) => call<{ post: Post }>('POST', `/api/posts/${id}/schedule`, { at }),
+	markPosted: (targetId: string, permalink: string) => call<{ post: Post }>('POST', `/api/targets/${targetId}/posted`, { permalink }),
 	prefs: () => call<{ notifications: boolean }>('GET', '/api/desktop/prefs'),
 	setPrefs: (p: { notifications: boolean }) => call<{ notifications: boolean }>('PUT', '/api/desktop/prefs', p),
 	cancelSchedule: (id: string) => call<{ post: Post }>('POST', `/api/posts/${id}/cancel`, {}),

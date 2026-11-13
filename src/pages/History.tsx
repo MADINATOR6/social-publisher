@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api, fmtDur, fmtTime, PLATFORM_NAME, type Post, type Target } from '../api';
 import { Icon, PlatformMark } from '../ui';
-import { describe, ScheduleActions, TargetRow, toneColor, type Action } from './Results';
+import { askLink, describe, ScheduleActions, TargetRow, toneColor, type Action } from './Results';
 
 export function HistoryPage({ posts, refresh, go }: { posts: Post[] | null; refresh: () => void; go: (p: string) => void }) {
 	const [open, setOpen] = useState<string | null>(null);
@@ -37,13 +37,25 @@ export function HistoryPage({ posts, refresh, go }: { posts: Post[] | null; refr
 		}
 	}
 
+	async function markPosted(t: Target) {
+		const link = askLink();
+		if (link === null) return;
+		setError(null);
+		try {
+			await api.markPosted(t.id, link);
+			refresh();
+		} catch (e: any) {
+			setError(e.message);
+		}
+	}
+
 	return (
 		<>
 			{error && <div className="notice bad" style={{ marginBottom: 12 }}>{error}</div>}
 			<div className="panel hlist" role="list">
 				{posts.map((p) => {
 					const failed = p.targets.filter((t) => t.state === 'failed' && !t.outcomeUnknown && !p.media.deleted);
-					const act = (a: Action, t: Target) => (a === 'reconnect' ? go('/accounts') : retry(p, t));
+					const act = (a: Action, t: Target) => (a === 'reconnect' ? go('/accounts') : a === 'posted' ? markPosted(t) : retry(p, t));
 					const expanded = open === p.id;
 					return (
 						<div key={p.id} role="listitem">

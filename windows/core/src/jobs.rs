@@ -335,6 +335,37 @@ pub fn cancel_scheduled(app: &App, post_id: &str) -> usize {
 	ids.len()
 }
 
+/// TikTok only takes videos into the creator's inbox, so the app never learns when the owner posts
+/// it there. The owner can say so by hand, which turns the destination into "published".
+pub fn can_mark_posted(t: &TargetRow) -> bool {
+	t.platform == crate::db::Platform::Tiktok && t.state == "needs_attention"
+}
+
+/** A TikTok address, if one was given. Anything else is refused rather than stored. */
+pub fn tiktok_link(raw: &str) -> Result<Option<String>, &'static str> {
+	let raw = raw.trim();
+	if raw.is_empty() {
+		return Ok(None);
+	}
+	let ok = url::Url::parse(raw).ok().filter(|u| u.scheme() == "https").and_then(|u| u.host_str().map(|h| h == "tiktok.com" || h.ends_with(".tiktok.com"))).unwrap_or(false);
+	if ok {
+		Ok(Some(raw.to_string()))
+	} else {
+		Err("Paste the post's TikTok link (https://www.tiktok.com/…), or leave it empty.")
+	}
+}
+
+pub fn mark_posted(app: &App, target_id: &str, permalink: Option<&str>) -> Result<String, &'static str> {
+	let t = get_target(app, target_id).ok_or("Not found")?;
+	if !can_mark_posted(&t) {
+		return Err("Only TikTok drafts waiting in the inbox can be marked as posted.");
+	}
+	finish(app, &t.id, "published", Finish { permalink, ..Default::default() });
+	let _ = app.db().execute("UPDATE targets SET error = NULL WHERE id = ?", [&t.id]);
+	add_event(app, &t.id, "Marked as posted by hand in TikTok.");
+	Ok(t.post_id)
+}
+
 pub fn active_jobs(app: &App) -> i64 {
 	app.db().query_row(&format!("SELECT COUNT(*) FROM targets WHERE state IN {ACTIVE_STATES}"), [], |r| r.get(0)).unwrap_or(0)
 }
@@ -435,6 +466,7 @@ pub fn post_view(app: &App, post_id: &str) -> Option<Value> {
 				"outcomeUnknown": r.uncertain && r.state != "published",
 				"accountStatus": t.account_status,
 				"nextRunAt": if r.state == "queued" { Value::from(r.next_run_at) } else { Value::Null },
+				"canMarkPosted": can_mark_posted(r),
 				"error": r.error,
 				"permalink": if post.is_demo { None } else { r.permalink.clone() },
 				"updatedAt": r.updated_at,

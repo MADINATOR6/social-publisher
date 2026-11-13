@@ -250,3 +250,24 @@ async fn a_finished_post_is_announced_once_and_again_after_a_retry() {
 	assert_eq!(jobs::post_view(&app, &quiet).unwrap()["done"], true);
 	assert_eq!(notices().len(), 2);
 }
+
+#[tokio::test]
+async fn a_tiktok_inbox_draft_can_be_marked_as_posted_by_hand() {
+	let app = app();
+	let (post, tt, _) = new_target(&app, Platform::Tiktok, true, "draft", json!({}));
+	runner::tick(&app, "w", 1).await;
+	assert_eq!(target(&app, &tt).state, "needs_attention");
+	assert_eq!(jobs::post_view(&app, &post).unwrap()["targets"][0]["canMarkPosted"], true);
+
+	assert!(jobs::tiktok_link("https://evil.example/x").is_err());
+	assert!(jobs::tiktok_link("http://www.tiktok.com/@me/video/1").is_err());
+	assert_eq!(jobs::tiktok_link("  ").unwrap(), None);
+	let link = jobs::tiktok_link("https://www.tiktok.com/@me/video/123").unwrap();
+	jobs::mark_posted(&app, &tt, link.as_deref()).unwrap();
+	let t = target(&app, &tt);
+	assert_eq!((t.state.as_str(), t.permalink.as_deref(), t.error.as_deref()), ("published", Some("https://www.tiktok.com/@me/video/123"), None));
+	// Only inbox drafts: not twice, and never another platform.
+	assert!(jobs::mark_posted(&app, &tt, None).is_err());
+	let (_, yt, _) = new_target(&app, Platform::Youtube, true, "x", json!({ "title": "T", "privacy": "private", "madeForKids": false }));
+	assert!(jobs::mark_posted(&app, &yt, None).is_err());
+}

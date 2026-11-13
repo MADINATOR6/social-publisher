@@ -32,7 +32,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 const DESKTOP_COOKIE: &str = "sp_desktop";
 /// What this backend can do beyond the original contract. The shared UI shows a feature only when it
 /// is listed here, so the Mac app (whose server sends none) keeps its screens unchanged.
-const FEATURES: &[&str] = &["schedule", "notifications"];
+const FEATURES: &[&str] = &["schedule", "notifications", "markPosted"];
 const SIGN_IN_HOSTS: [&str; 4] = ["accounts.google.com", "www.instagram.com", "api.instagram.com", "www.tiktok.com"];
 
 #[derive(rust_embed::RustEmbed)]
@@ -64,6 +64,7 @@ pub fn router(app: Arc<App>) -> Router {
 		.route("/api/posts/{id}/retry", post(post_retry))
 		.route("/api/posts/{id}/schedule", post(post_schedule))
 		.route("/api/posts/{id}/cancel", post(post_cancel))
+		.route("/api/targets/{id}/posted", post(target_posted))
 		.route("/api/desktop/enter", get(desktop_enter))
 		.route("/api/desktop/services", get(desktop_services))
 		.route("/api/desktop/pick-video", post(desktop_pick_video))
@@ -960,4 +961,17 @@ async fn desktop_prefs_put(State(app): S, body: Bytes) -> Response {
 		}
 	}
 	ok(json!({ "notifications": crate::notify::enabled(&app) }))
+}
+
+/** The owner finished a TikTok inbox draft in the TikTok app. `permalink` is optional. */
+async fn target_posted(State(app): S, Path(id): Path<String>, body: Bytes) -> Response {
+	let b = parse(&body);
+	let link = match jobs::tiktok_link(b["permalink"].as_str().unwrap_or("")) {
+		Ok(l) => l,
+		Err(m) => return fail_with(422, m, &[Issue::new("permalink", m)]),
+	};
+	match jobs::mark_posted(&app, &id, link.as_deref()) {
+		Ok(post_id) => ok(json!({ "post": jobs::post_view(&app, &post_id) })),
+		Err(m) => fail(409, m),
+	}
 }
