@@ -32,7 +32,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 const DESKTOP_COOKIE: &str = "sp_desktop";
 /// What this backend can do beyond the original contract. The shared UI shows a feature only when it
 /// is listed here, so the Mac app (whose server sends none) keeps its screens unchanged.
-const FEATURES: &[&str] = &["schedule"];
+const FEATURES: &[&str] = &["schedule", "notifications"];
 const SIGN_IN_HOSTS: [&str; 4] = ["accounts.google.com", "www.instagram.com", "api.instagram.com", "www.tiktok.com"];
 
 #[derive(rust_embed::RustEmbed)]
@@ -71,6 +71,7 @@ pub fn router(app: Arc<App>) -> Router {
 		.route("/api/desktop/open-external", post(desktop_open_external))
 		.route("/api/desktop/open-link", post(desktop_open_link))
 		.route("/api/desktop/reveal-logs", post(desktop_reveal_logs))
+		.route("/api/desktop/prefs", get(desktop_prefs).put(desktop_prefs_put))
 		.fallback(static_ui)
 		.layer(DefaultBodyLimit::max(1024 * 1024))
 		.layer(middleware::from_fn_with_state(app.clone(), guard))
@@ -944,4 +945,19 @@ pub fn bridge_script(origin: &str) -> String {
 
 pub async fn serve(listener: tokio::net::TcpListener, app: Arc<App>) -> std::io::Result<()> {
 	axum::serve(listener, router(app)).await
+}
+
+/** Windows app preferences kept in the database: whether finished posts are announced. */
+async fn desktop_prefs(State(app): S) -> Response {
+	ok(json!({ "notifications": crate::notify::enabled(&app) }))
+}
+
+async fn desktop_prefs_put(State(app): S, body: Bytes) -> Response {
+	let b = parse(&body);
+	if let Some(on) = b["notifications"].as_bool() {
+		if let Err(e) = settings::save(&app, &[("NOTIFY", if on { None } else { Some("off") })]) {
+			return fail(500, &e);
+		}
+	}
+	ok(json!({ "notifications": crate::notify::enabled(&app) }))
 }

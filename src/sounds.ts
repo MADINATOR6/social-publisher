@@ -200,6 +200,8 @@ function soundFor(el: HTMLElement): string {
 export function enableSounds() {
 	if (enabled) return;
 	enabled = true;
+	// The Windows app calls this when a post finishes, also while the window is hidden in the tray.
+	(window as any).__publisherFinished = (n: { ok: boolean }) => play(n?.ok ? 'launch' : 'danger');
 	listeners.forEach((f) => f());
 	addEventListener(
 		'click',

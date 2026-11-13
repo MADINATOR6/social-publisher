@@ -118,6 +118,7 @@ pub async fn run_target(app: &Arc<App>, t: TargetRow, owner: &str) {
 			}
 		}
 	}
+	crate::notify::after_target(app, &ctx.target.post_id);
 }
 
 async fn attempt(ctx: &mut Ctx, reconciling: &mut bool) -> Result<Outcome, PubError> {

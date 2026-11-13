@@ -60,6 +60,8 @@ export const api = {
 	retry: (id: string, targetIds?: string[]) => call<{ post: Post }>('POST', `/api/posts/${id}/retry`, { targetIds }),
 	/** `at` null publishes now. */
 	schedule: (id: string, at: number | null) => call<{ post: Post }>('POST', `/api/posts/${id}/schedule`, { at }),
+	prefs: () => call<{ notifications: boolean }>('GET', '/api/desktop/prefs'),
+	setPrefs: (p: { notifications: boolean }) => call<{ notifications: boolean }>('PUT', '/api/desktop/prefs', p),
 	cancelSchedule: (id: string) => call<{ post: Post }>('POST', `/api/posts/${id}/cancel`, {}),
 };
 

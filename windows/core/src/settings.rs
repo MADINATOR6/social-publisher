@@ -27,7 +27,8 @@ pub fn fields(p: Platform) -> Fields {
 	}
 }
 
-const ALLOWED: [&str; 7] = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "INSTAGRAM_APP_ID", "INSTAGRAM_APP_SECRET", "TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET", "PUBLIC_BASE_URL"];
+/// `NOTIFY` ("off" or unset) is the Windows app's notification choice.
+const ALLOWED: [&str; 8] = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "INSTAGRAM_APP_ID", "INSTAGRAM_APP_SECRET", "TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET", "PUBLIC_BASE_URL", "NOTIFY"];
 
 fn load(app: &App) -> Arc<HashMap<String, String>> {
 	if let Some((at, values)) = app.settings_cache.lock().as_ref() {

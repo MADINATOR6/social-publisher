@@ -1,13 +1,25 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
-import { api, type Account, type Config, type Post, type Status } from './api';
+import { api, has, type Account, type Config, type Post, type Status } from './api';
 import { computer, logsHint, onWindows } from './desktop';
 import { Icon } from './ui';
 import { enableSounds, sounds } from './sounds';
 
 // The Windows app clicks like Ethereal Enchantment. The Mac app stays silent.
 if (onWindows) enableSounds();
+
+/** Windows app: whether finished posts show a notification. Kept by the app, not the browser. */
+function NotifyToggle() {
+	const [on, setOn] = useState<boolean | null>(null);
+	useEffect(() => void api.prefs().then((p) => setOn(p.notifications)).catch(() => undefined), []);
+	if (on === null) return null;
+	return (
+		<button className="ghost-link" aria-pressed={on} title={on ? 'A notification appears when a post finishes (click to turn off)' : 'Notifications are off (click to turn on)'} onClick={async () => setOn((await api.setPrefs({ notifications: !on })).notifications)}>
+			{on ? <Icon.bell /> : <Icon.bellOff />} <span>{on ? 'Notifications on' : 'Notifications off'}</span>
+		</button>
+	);
+}
 
 function SoundToggle() {
 	const [, redraw] = useState(0);
@@ -131,6 +143,7 @@ function App() {
 					{session.noSignIn && <span className="chip warn signin-off" title="Password protection is off (NO_SIGN_IN=true). Only this computer can open the app. Turn sign-in back on before sharing or tunnelling it.">Sign-in off · local only</span>}
 					<WorkerStatus status={status} inFlight={inFlight} desktop={Boolean(session.desktop)} />
 					<SoundToggle />
+					{has(config, 'notifications') && <NotifyToggle />}
 					{!session.noSignIn && !session.desktop && <button className="ghost-link" aria-label="Sign out" onClick={async () => (await api.signOut(), location.reload())}><Icon.out /> <span>Sign out</span></button>}
 				</div>
 			</nav>

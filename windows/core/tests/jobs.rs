@@ -187,3 +187,66 @@ async fn a_scheduled_post_waits_for_its_time_and_can_be_moved_or_cancelled() {
 	assert_eq!(jobs::retry_targets(&app, &later, None).len(), 1);
 	assert!(jobs::claim_next(&app, "w").is_some());
 }
+
+/// A stand-in for the desktop shell that records notifications.
+struct Recorder(std::sync::Mutex<Vec<publisher_core::Notice>>);
+impl publisher_core::Shell for Recorder {
+	fn pick_video(&self) -> Option<std::path::PathBuf> {
+		None
+	}
+	fn open_url(&self, _url: &str) {}
+	fn reveal(&self, _path: &std::path::Path) {}
+	fn notify(&self, n: &publisher_core::Notice) {
+		self.0.lock().unwrap().push(n.clone());
+	}
+}
+
+#[tokio::test]
+async fn a_finished_post_is_announced_once_and_again_after_a_retry() {
+	let app = app();
+	let shell: &'static Recorder = Box::leak(Box::new(Recorder(Default::default())));
+	struct Fwd(&'static Recorder);
+	impl publisher_core::Shell for Fwd {
+		fn pick_video(&self) -> Option<std::path::PathBuf> {
+			None
+		}
+		fn open_url(&self, _url: &str) {}
+		fn reveal(&self, _path: &std::path::Path) {}
+		fn notify(&self, n: &publisher_core::Notice) {
+			self.0.notify(n)
+		}
+	}
+	let _ = app.shell.set(Box::new(Fwd(shell)));
+	let notices = || shell.0.lock().unwrap().clone();
+
+	let m = seed_media(&app, 1024);
+	let targets: Vec<NewTarget> = [Platform::Instagram, Platform::Youtube]
+		.into_iter()
+		.map(|p| NewTarget { account_id: seed_account(&app, p, true).id, platform: p.as_str().into(), settings: json!({ "title": "T", "privacy": "private", "madeForKids": false }) })
+		.collect();
+	let (post, _) = jobs::create_post(&app, "notify-key-1", &m, "Beach day", true, &targets, None).unwrap();
+
+	// The first destination to finish says nothing; the last one announces the whole post.
+	runner::tick(&app, "w", 1).await;
+	assert!(notices().is_empty());
+	runner::tick(&app, "w", 1).await;
+	assert_eq!(notices().len(), 1);
+	assert_eq!((notices()[0].title.as_str(), notices()[0].post_id.as_str()), ("Simulation finished", post.as_str()));
+	// Running the finish hook again (as a second job would) does not announce it twice.
+	publisher_core::notify::after_target(&app, &post);
+	assert_eq!(notices().len(), 1);
+
+	// After a retry, the post is announced again when it finishes.
+	let t = &jobs::post_view(&app, &post).unwrap()["targets"][0]["id"].as_str().unwrap().to_string();
+	app.db().execute("UPDATE targets SET state = 'failed' WHERE id = ?", [t]).unwrap();
+	jobs::retry_targets(&app, &post, None);
+	runner::tick(&app, "w", 1).await;
+	assert_eq!(notices().len(), 2);
+
+	// Turned off in the app: nothing is shown.
+	publisher_core::settings::save(&app, &[("NOTIFY", Some("off"))]).unwrap();
+	let (quiet, _) = jobs::create_post(&app, "notify-key-2", &m, "Quiet", true, &targets[..1], None).unwrap();
+	runner::tick(&app, "w", 1).await;
+	assert_eq!(jobs::post_view(&app, &quiet).unwrap()["done"], true);
+	assert_eq!(notices().len(), 2);
+}

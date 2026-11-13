@@ -13,6 +13,7 @@ pub mod jobs;
 pub mod keys;
 pub mod logging;
 pub mod media;
+pub mod notify;
 pub mod platforms;
 pub mod probe;
 pub mod relay;
@@ -21,4 +22,4 @@ pub mod server;
 pub mod settings;
 pub mod util;
 
-pub use app::{App, Config, Endpoints, Shell};
+pub use app::{App, Config, Endpoints, Notice, Shell};

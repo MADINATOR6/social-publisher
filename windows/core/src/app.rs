@@ -81,6 +81,18 @@ pub trait Shell: Send + Sync {
 	fn pick_video(&self) -> Option<PathBuf>;
 	fn open_url(&self, url: &str);
 	fn reveal(&self, path: &Path);
+	/// A post finished: show a Windows notification and play the finish sound. Called at most once
+	/// per finished post (again only after a retry).
+	fn notify(&self, _notice: &Notice) {}
+}
+
+/** What a finish notification says. `ok` is false when any destination failed or needs the owner. */
+#[derive(Debug, Clone, PartialEq)]
+pub struct Notice {
+	pub post_id: String,
+	pub title: String,
+	pub body: String,
+	pub ok: bool,
 }
 
 pub struct PendingOAuth {

@@ -149,6 +149,7 @@ fn migrate(c: &Connection) -> rusqlite::Result<()> {
 	)?;
 	// Added by the Windows app. Optional columns, so the Mac app can still open the same database.
 	add_column(c, "posts", "scheduled_at", "INTEGER")?;
+	add_column(c, "posts", "notified_at", "INTEGER")?;
 	Ok(())
 }
 

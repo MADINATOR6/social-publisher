@@ -45,7 +45,24 @@ impl Shell for DesktopShell {
 	fn reveal(&self, path: &Path) {
 		let _ = open::that_detached(path);
 	}
+	fn notify(&self, notice: &publisher_core::Notice) {
+		let (title, body, ok) = (notice.title.clone(), notice.body.clone(), notice.ok);
+		let handle = self.0.clone();
+		// WinRT and the webview both want the main thread.
+		let _ = self.0.run_on_main_thread(move || {
+			if let Err(e) = toast::show(&title, &body) {
+				if let Some(r) = RUNNING.get() {
+					r.app.log.line(&format!("notification not shown: {e}"));
+				}
+			}
+			if let Some(w) = handle.get_webview_window("main") {
+				let _ = w.eval(format!("window.__publisherFinished && window.__publisherFinished({{ ok: {ok} }})"));
+			}
+		});
+	}
 }
+
+mod toast;
 
 fn user_data_dir() -> PathBuf {
 	// PUBLISHER_DATA_DIR lets a test copy run beside the real one without touching its data.
@@ -196,6 +213,8 @@ fn create_window(handle: &AppHandle, origin: &str, nonce: &str) -> tauri::Result
 		.min_inner_size(900.0, 620.0)
 		.center()
 		.initialization_script(server::bridge_script(origin))
+		// Tauri's defaults, plus letting the finish sound play while the window is hidden in the tray.
+		.additional_browser_args("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required")
 		// Let the page handle dropped files itself (the upload box), as it does on the Mac.
 		.disable_drag_drop_handler()
 		// The window only ever shows the app. Anything else opens in the default browser.
@@ -346,6 +365,15 @@ fn boot(handle: AppHandle) {
 		Ok(c) => c,
 		Err(e) => return fatal(&handle, &log, &logs_dir, "Publisher could not open its database.", &format!("{e}\n\nYour data was not changed. The logs explain the problem.")),
 	};
+	// Let Windows show this app's notifications under its own name and icon.
+	let icon = user_data.join("notification-icon.ico");
+	if !icon.exists() {
+		let _ = std::fs::write(&icon, include_bytes!("../icons/icon.ico"));
+	}
+	if let Err(e) = toast::register(APP_NAME, &icon) {
+		log.line(&format!("could not register for notifications: {e}"));
+	}
+
 	let mut endpoints = Endpoints::default();
 	if let Some(relay) = settings.relay_url.clone() {
 		endpoints.relay = relay;

@@ -295,6 +295,9 @@ pub fn retry_targets(app: &App, post_id: &str, target_ids: Option<&[String]>) ->
 		add_event(app, &r.id, "Retry requested.");
 		picked.push(r.id);
 	}
+	if !picked.is_empty() {
+		crate::notify::reset(app, post_id);
+	}
 	picked
 }
 
@@ -321,8 +324,10 @@ pub fn reschedule(app: &App, post_id: &str, at: Option<i64>) -> usize {
 /// clear reason, so "Retry" can still post them later.
 pub fn cancel_scheduled(app: &App, post_id: &str) -> usize {
 	let db = app.db();
-	let ids: Vec<String> =
-		db.prepare(&format!("SELECT id FROM targets WHERE post_id = ? AND next_run_at > ? AND {WAITING}")).and_then(|mut st| st.query_map(params![post_id, now_ms()], |r| r.get(0)).map(|r| r.flatten().collect())).unwrap_or_default();
+	let ids: Vec<String> = db
+		.prepare(&format!("SELECT id FROM targets WHERE post_id = ? AND next_run_at > ? AND {WAITING}"))
+		.and_then(|mut st| st.query_map(params![post_id, now_ms()], |r| r.get(0)).map(|r| r.flatten().collect()))
+		.unwrap_or_default();
 	for id in &ids {
 		finish(app, id, "failed", Finish { error: Some("Cancelled before the scheduled time. Retry posts it now."), ..Default::default() });
 		add_event(app, id, "Schedule cancelled.");
