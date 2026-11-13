@@ -1,8 +1,9 @@
 //! Instagram API with Instagram Login, for professional accounts (port of `server/platforms/instagram.ts`).
 //! Docs: https://developers.facebook.com/docs/instagram-platform/content-publishing/
 //!
-//! Reels are published from a public video URL that Instagram downloads, so this app serves each
-//! video at a short-lived signed URL under the public address.
+//! Reels are published from a public video URL that Instagram downloads. With a public address of the
+//! owner's own (a tunnel), this app serves each video at a short-lived signed URL under it. Otherwise
+//! the video goes to the sign-in relay's temporary storage for a few minutes (see `relay.rs`).
 use super::http::{json, Req};
 use super::{Availability, Ctx, Identity, Outcome, PubError, Reconciled, TokenSet};
 use crate::crypto::signed_token;
@@ -26,8 +27,26 @@ pub fn public_media_url(app: &App, media_id: &str) -> String {
 	format!("{}/m/{}", public_base_url(app).trim_end_matches('/'), signed_token(&app.cfg.session_secret, j!({ "media": media_id }), 6 * 3600))
 }
 
-pub fn availability(app: &App) -> Availability {
+/// Where Instagram downloads the video from: the owner's own public address (a tunnel to this app)
+/// when one is set, otherwise the sign-in relay's temporary storage.
+enum Source {
+	Local,
+	Relay,
+	None,
+}
+
+fn source(app: &App) -> Source {
 	if is_https(&public_base_url(app)) {
+		Source::Local
+	} else if crate::relay::base(app).is_some() && app.endpoints.relay_platforms.contains(&Platform::Instagram) {
+		Source::Relay
+	} else {
+		Source::None
+	}
+}
+
+pub fn availability(app: &App) -> Availability {
+	if !matches!(source(app), Source::None) {
 		Availability { available: true, mode: "reels", note: "Publishes Reels to a professional (Business or Creator) account.".into() }
 	} else {
 		Availability { available: false, mode: "reels", note: "Instagram downloads the video from a public HTTPS address. Set PUBLIC_BASE_URL (for example a tunnel to this app) to publish.".into() }
@@ -134,6 +153,7 @@ pub async fn reconcile(ctx: &mut Ctx) -> Result<Reconciled, PubError> {
 		"PUBLISHED" => Ok(Reconciled::Done(match_published(ctx).await?)),
 		// Instagram says this container was never published (it failed or expired), so a fresh one is safe.
 		"ERROR" | "EXPIRED" => {
+			crate::relay::release_media(ctx).await;
 			ctx.save(Patch::new().clear_ref().clear_phase().progress(0.0));
 			Ok(Reconciled::Restart)
 		}
@@ -144,7 +164,8 @@ pub async fn reconcile(ctx: &mut Ctx) -> Result<Reconciled, PubError> {
 
 pub async fn run(ctx: &mut Ctx) -> Result<Outcome, PubError> {
 	let app = ctx.app.clone();
-	if !is_https(&public_base_url(&app)) {
+	let src = source(&app);
+	if matches!(src, Source::None) {
 		return Err(PubError::attention("Set PUBLIC_BASE_URL to a public HTTPS address so Instagram can download the video."));
 	}
 	let token = ctx.token().await?;
@@ -161,8 +182,11 @@ pub async fn run(ctx: &mut Ctx) -> Result<Outcome, PubError> {
 				return Err(PubError::transient_after(format!("Instagram's publishing limit is reached ({u}/{t} in 24 h)"), 60 * 60_000));
 			}
 		}
+		let video_url = match src {
+			Source::Relay => crate::relay::host_media(ctx, &token).await?,
+			_ => public_media_url(&app, &ctx.media.id),
+		};
 		ctx.save(Patch::new().state("uploading").phase("container").progress(0.05));
-		let video_url = public_media_url(&app, &ctx.media.id);
 		let share = (ctx.settings["shareToFeed"] != Value::Bool(false)).to_string();
 		let mut params: Vec<(&str, String)> = vec![("media_type", "REELS".into()), ("video_url", video_url), ("caption", ctx.caption.clone()), ("share_to_feed", share)];
 		let thumb = &ctx.settings["thumbOffsetMs"];
@@ -171,7 +195,10 @@ pub async fn run(ctx: &mut Ctx) -> Result<Outcome, PubError> {
 		}
 		let pairs: Vec<(&str, &str)> = params.iter().map(|(k, v)| (*k, v.as_str())).collect();
 		let c = json(&app, Req::post(&format!("{g}/{ig_id}/media")).bearer(&token).form(&pairs)).await?;
-		ctx.save(Patch::new().phase("processing").state("processing").rf(j!({ "containerId": c["id"] })).progress(0.1));
+		// Keep any hosted-video details next to the container, so the copy can be deleted later.
+		let mut r = ctx.rf();
+		r["containerId"] = c["id"].clone();
+		ctx.save(Patch::new().phase("processing").state("processing").rf(r).progress(0.1));
 		ctx.log("Instagram is downloading and processing the video.");
 	}
 
@@ -181,10 +208,21 @@ pub async fn run(ctx: &mut Ctx) -> Result<Outcome, PubError> {
 			let id = js_str(&ctx.rf()["containerId"]);
 			let c = container(ctx, &id).await?;
 			match c["status_code"].as_str().unwrap_or("") {
-				"FINISHED" => break,
-				"PUBLISHED" => return match_published(ctx).await,
-				"ERROR" => return Err(PubError::rejected(format!("Instagram could not process the video: {}", c["status"].as_str().unwrap_or("unknown error")))),
+				// Instagram has its own copy now, so the hosted one can go.
+				"FINISHED" => {
+					crate::relay::release_media(ctx).await;
+					break;
+				}
+				"PUBLISHED" => {
+					crate::relay::release_media(ctx).await;
+					return match_published(ctx).await;
+				}
+				"ERROR" => {
+					crate::relay::release_media(ctx).await;
+					return Err(PubError::rejected(format!("Instagram could not process the video: {}", c["status"].as_str().unwrap_or("unknown error"))));
+				}
 				"EXPIRED" => {
+					crate::relay::release_media(ctx).await;
 					ctx.save(Patch::new().clear_ref().clear_phase());
 					return Err(PubError::transient("Instagram container expired before publishing"));
 				}

@@ -41,11 +41,30 @@ pub struct Endpoints {
 	pub instagram_graph: String,
 	pub instagram_api: String,
 	pub tiktok_api: String,
+	/// The operator's sign-in relay (see `relay.rs`). `None` means customers bring their own developer keys.
+	pub relay: Option<String>,
+	/// Platforms the relay is set up for.
+	pub relay_platforms: Vec<crate::db::Platform>,
+}
+
+/** The relay address built into this copy of the app: `PUBLISHER_RELAY_URL` at build time. */
+pub fn built_in_relay() -> Option<String> {
+	option_env!("PUBLISHER_RELAY_URL").map(str::trim).filter(|s| s.starts_with("https://")).map(String::from)
+}
+
+/** `PUBLISHER_RELAY_PLATFORMS` at build time, for example `youtube,tiktok`. All three when unset. */
+pub fn built_in_relay_platforms() -> Vec<crate::db::Platform> {
+	match option_env!("PUBLISHER_RELAY_PLATFORMS").map(str::trim).filter(|s| !s.is_empty()) {
+		Some(list) => list.split(',').filter_map(|p| crate::db::Platform::parse(p.trim())).collect(),
+		None => crate::db::PLATFORMS.to_vec(),
+	}
 }
 
 impl Default for Endpoints {
 	fn default() -> Self {
 		Endpoints {
+			relay: built_in_relay(),
+			relay_platforms: built_in_relay_platforms(),
 			google_token: "https://oauth2.googleapis.com/token".into(),
 			google_revoke: "https://oauth2.googleapis.com/revoke".into(),
 			youtube_api: "https://www.googleapis.com/youtube/v3".into(),
@@ -68,6 +87,8 @@ pub struct PendingOAuth {
 	pub verifier: String,
 	pub platform: crate::db::Platform,
 	pub exp: i64,
+	/// Started through the sign-in relay, so the code must be exchanged there.
+	pub via_relay: bool,
 }
 
 pub struct App {
@@ -125,9 +146,15 @@ impl App {
 	/// An app on an in-memory database with demo mode on, for tests.
 	#[doc(hidden)]
 	pub fn for_tests(endpoints: Endpoints) -> Arc<App> {
+		Self::for_tests_with(endpoints, |_| {})
+	}
+
+	/// Like `for_tests`, with a chance to change the configuration first.
+	#[doc(hidden)]
+	pub fn for_tests_with(endpoints: Endpoints, change: impl FnOnce(&mut Config)) -> Arc<App> {
 		let dir = std::env::temp_dir().join(format!("sp-test-{}", crate::crypto::random_id(6)));
 		std::fs::create_dir_all(dir.join("media")).unwrap();
-		let cfg = Config {
+		let mut cfg = Config {
 			version: "test".into(),
 			port: 8787,
 			app_url: "http://127.0.0.1:8787".into(),
@@ -144,6 +171,7 @@ impl App {
 			tiktok_direct_post: false,
 			ffprobe: None,
 		};
+		change(&mut cfg);
 		let app = App::new(cfg, crate::db::open(None).unwrap(), endpoints, Logger::none());
 		app.fast_sleep.store(true, std::sync::atomic::Ordering::Relaxed);
 		app

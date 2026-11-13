@@ -62,6 +62,8 @@ struct Settings {
 	media_retention_hours: Option<f64>,
 	max_upload_mb: Option<f64>,
 	public_base_url: Option<String>,
+	/// `relayUrl` overrides the built-in sign-in relay: an https address, or "" to turn it off.
+	relay_url: Option<Option<String>>,
 	close_hint_shown: bool,
 	raw: serde_json::Value,
 }
@@ -73,6 +75,15 @@ fn read_settings(file: &Path) -> Settings {
 		media_retention_hours: raw["mediaRetentionHours"].as_f64().filter(|n| *n > 0.0),
 		max_upload_mb: raw["maxUploadMb"].as_f64().filter(|n| *n > 0.0),
 		public_base_url: raw["publicBaseUrl"].as_str().filter(|s| s.starts_with("https://")).map(String::from),
+		relay_url: raw["relayUrl"].as_str().map(str::trim).and_then(|s| {
+			if s.is_empty() {
+				Some(None)
+			} else if s.starts_with("https://") {
+				Some(Some(s.to_string()))
+			} else {
+				None
+			}
+		}),
 		close_hint_shown: raw["closeHintShown"].as_bool().unwrap_or(false),
 		raw,
 	}
@@ -335,7 +346,15 @@ fn boot(handle: AppHandle) {
 		Ok(c) => c,
 		Err(e) => return fatal(&handle, &log, &logs_dir, "Publisher could not open its database.", &format!("{e}\n\nYour data was not changed. The logs explain the problem.")),
 	};
-	let app = App::new(cfg, conn, Endpoints::default(), log);
+	let mut endpoints = Endpoints::default();
+	if let Some(relay) = settings.relay_url.clone() {
+		endpoints.relay = relay;
+	}
+	match &endpoints.relay {
+		Some(r) => log.line(&format!("sign-in service: {r}")),
+		None => log.line("sign-in service: none (accounts connect with developer keys entered in the app)"),
+	}
+	let app = App::new(cfg, conn, endpoints, log);
 	*app.enter_nonce.lock() = Some(nonce.clone());
 	let _ = app.shell.set(Box::new(DesktopShell(handle.clone())));
 

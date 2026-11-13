@@ -188,7 +188,10 @@ pub fn authorize_url(app: &App, p: Platform, state: &str, challenge: &str) -> St
 	}
 }
 
-pub async fn exchange_code(app: &App, p: Platform, code: &str, verifier: &str) -> Result<TokenSet, PubError> {
+pub async fn exchange_code(app: &App, p: Platform, code: &str, verifier: &str, via_relay: bool) -> Result<TokenSet, PubError> {
+	if via_relay {
+		return crate::relay::exchange_code(app, p, code, verifier).await;
+	}
 	match p {
 		Platform::Tiktok => tiktok::exchange_code(app, code).await,
 		Platform::Instagram => instagram::exchange_code(app, code).await,
@@ -197,6 +200,10 @@ pub async fn exchange_code(app: &App, p: Platform, code: &str, verifier: &str) -
 }
 
 pub async fn refresh(app: &App, a: &AccountRow, refresh_token: Option<&str>, access_token: Option<&str>) -> Result<TokenSet, PubError> {
+	// Instagram tokens refresh without the app secret, so those still go straight to Instagram.
+	if a.platform != Platform::Instagram && crate::relay::via_relay(a) {
+		return crate::relay::refresh(app, a.platform, refresh_token).await;
+	}
 	match a.platform {
 		Platform::Tiktok => tiktok::refresh(app, refresh_token).await,
 		Platform::Instagram => instagram::refresh(app, a, access_token).await,
@@ -213,8 +220,9 @@ pub async fn identity(app: &App, p: Platform, access_token: &str, tokens: &Token
 }
 
 /** Best effort: a failed revoke never blocks disconnecting. */
-pub async fn revoke(app: &App, p: Platform, access_token: Option<&str>, refresh_token: Option<&str>) {
+pub async fn revoke(app: &App, p: Platform, access_token: Option<&str>, refresh_token: Option<&str>, via_relay: bool) {
 	match p {
+		Platform::Tiktok if via_relay => crate::relay::revoke_tiktok(app, access_token).await,
 		Platform::Tiktok => tiktok::revoke(app, access_token).await,
 		Platform::Instagram => {}
 		Platform::Youtube => youtube::revoke(app, access_token, refresh_token).await,

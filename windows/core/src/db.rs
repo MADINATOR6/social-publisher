@@ -164,6 +164,8 @@ pub struct AccountRow {
 	pub refresh_token: Option<String>,
 	pub access_expires_at: Option<i64>,
 	pub refresh_expires_at: Option<i64>,
+	/// JSON with platform details, and `"via": "relay"` for accounts connected through the sign-in relay.
+	pub meta: Option<String>,
 	pub created_at: i64,
 	pub updated_at: i64,
 }
@@ -185,6 +187,7 @@ impl AccountRow {
 			refresh_token: r.get("refresh_token")?,
 			access_expires_at: r.get("access_expires_at")?,
 			refresh_expires_at: r.get("refresh_expires_at")?,
+			meta: r.get("meta")?,
 			created_at: r.get("created_at")?,
 			updated_at: r.get("updated_at")?,
 		})

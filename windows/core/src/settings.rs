@@ -126,6 +126,7 @@ pub fn setup_view(app: &App) -> Value {
 				p.as_str().to_string(),
 				json!({
 					"configured": !id.is_empty() && !secret.is_empty(),
+					"hosted": crate::relay::hosted(app, *p),
 					"source": if from_app { Value::from("app") } else { Value::Null },
 					"idPreview": if id.is_empty() { Value::Null } else { Value::from(mask(&id)) },
 					"hasSecret": !secret.is_empty(),

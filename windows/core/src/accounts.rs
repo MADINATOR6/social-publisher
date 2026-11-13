@@ -131,7 +131,7 @@ pub async fn disconnect(app: &App, id: &str) -> Result<(), String> {
 		let key = &app.cfg.token_key;
 		let access = open(key, a.access_token.as_deref()).ok().flatten();
 		let refresh = open(key, a.refresh_token.as_deref()).ok().flatten();
-		platforms::revoke(app, a.platform, access.as_deref(), refresh.as_deref()).await;
+		platforms::revoke(app, a.platform, access.as_deref(), refresh.as_deref(), crate::relay::via_relay(&a)).await;
 	}
 	let db = app.db();
 	let busy: i64 = db.query_row(&format!("SELECT COUNT(*) FROM targets WHERE account_id = ? AND state IN {ACTIVE_STATES}"), [id], |r| r.get(0)).unwrap_or(0);

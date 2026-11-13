@@ -12,7 +12,7 @@ use crate::media::{self, info_of, media_view, validate_media, Issue, VIDEO_MIME}
 use crate::platforms::{self, Identity, TokenSet};
 use crate::settings::{self, check_keys, fields, setup_view};
 use crate::util::{decode_component, encode_component, js_str, now_ms};
-use crate::{probe, App};
+use crate::{probe, relay, App};
 use axum::body::{Body, Bytes};
 use axum::extract::{DefaultBodyLimit, Path, Query, Request, State};
 use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
@@ -171,7 +171,7 @@ async fn config(State(app): S) -> Response {
 		.iter()
 		.map(|p| {
 			let av = platforms::availability(&app, *p, false);
-			(p.as_str().to_string(), json!({ "configured": settings::configured(&app, *p), "available": av.available, "mode": av.mode, "note": av.note, "limits": media::limits_json(*p) }))
+			(p.as_str().to_string(), json!({ "configured": relay::ready(&app, *p), "hosted": relay::hosted(&app, *p), "available": av.available, "mode": av.mode, "note": av.note, "limits": media::limits_json(*p) }))
 		})
 		.collect();
 	ok(json!({ "demoMode": app.cfg.demo_mode, "publicBaseUrl": !settings::public_base_url(&app).is_empty(), "platforms": platforms }))
@@ -315,13 +315,18 @@ async fn demo_accounts(State(app): S) -> Response {
 fn begin_oauth(app: &App, platform: Platform) -> String {
 	let state = random_id(18);
 	let (verifier, challenge) = pkce_pair();
+	let via_relay = relay::hosted(app, platform);
 	{
 		let mut pending = app.pending_oauth.lock();
 		let t = now_ms();
 		pending.retain(|_, v| v.exp >= t);
-		pending.insert(state.clone(), PendingOAuth { verifier, platform, exp: t + 600_000 });
+		pending.insert(state.clone(), PendingOAuth { verifier, platform, exp: t + 600_000, via_relay });
 	}
-	platforms::authorize_url(app, platform, &state, &challenge)
+	if via_relay {
+		relay::authorize_url(app, platform, &state, &challenge)
+	} else {
+		platforms::authorize_url(app, platform, &state, &challenge)
+	}
 }
 
 async fn oauth_begin(State(app): S, Path(platform): Path<String>) -> Response {
@@ -329,7 +334,7 @@ async fn oauth_begin(State(app): S, Path(platform): Path<String>) -> Response {
 		Ok(p) => p,
 		Err(r) => return r,
 	};
-	if !settings::configured(&app, p) {
+	if !relay::ready(&app, p) {
 		return fail(409, &format!("{} is not set up yet. Add its app keys first.", p.label()));
 	}
 	ok(json!({ "url": begin_oauth(&app, p) }))
@@ -340,7 +345,7 @@ async fn oauth_start(State(app): S, Path(platform): Path<String>) -> Response {
 		Ok(p) => p,
 		Err(r) => return r,
 	};
-	if !settings::configured(&app, p) {
+	if !relay::ready(&app, p) {
 		return redirect(&format!("{}/accounts?error={}", app.cfg.app_url, encode_component(&format!("{platform} is not set up yet. Add its app keys first."))));
 	}
 	redirect(&begin_oauth(&app, p))
@@ -365,8 +370,11 @@ async fn oauth_callback(State(app): S, Path(platform): Path<String>, Query(q): Q
 	};
 	let Some(code) = param("code") else { return done(false, "The platform did not return an authorization code.") };
 	let connect = async {
-		let tokens = platforms::exchange_code(&app, p, code, &saved.verifier).await?;
-		let who = platforms::identity(&app, p, &tokens.access_token, &tokens).await?;
+		let tokens = platforms::exchange_code(&app, p, code, &saved.verifier, saved.via_relay).await?;
+		let mut who = platforms::identity(&app, p, &tokens.access_token, &tokens).await?;
+		if saved.via_relay {
+			who.meta = Some(relay::mark(who.meta.take()));
+		}
 		Ok::<_, platforms::PubError>(upsert_account(&app, p, &who, &tokens, false).map(|a| a.display_name).unwrap_or(who.display_name))
 	};
 	match connect.await {
@@ -796,7 +804,11 @@ fn https_url(body: &Bytes) -> Option<url::Url> {
 
 /** Opens a platform sign-in page in the default browser. Only the known sign-in hosts are allowed. */
 async fn desktop_open_external(State(app): S, body: Bytes) -> Response {
-	let allowed = https_url(&body).filter(|u| SIGN_IN_HOSTS.contains(&u.host_str().unwrap_or("")));
+	let relay_host = relay::host(&app);
+	let allowed = https_url(&body).filter(|u| {
+		let h = u.host_str().unwrap_or("");
+		SIGN_IN_HOSTS.contains(&h) || relay_host.as_deref() == Some(h)
+	});
 	match (allowed, app.shell.get()) {
 		(Some(u), Some(shell)) => {
 			shell.open_url(u.as_str());

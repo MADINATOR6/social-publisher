@@ -79,7 +79,14 @@ impl Mock {
 			instagram_graph: format!("{}/ig", self.base),
 			instagram_api: format!("{}/ig-api", self.base),
 			tiktok_api: format!("{}/tiktok", self.base),
+			relay: None,
+			relay_platforms: publisher_core::db::PLATFORMS.to_vec(),
 		}
+	}
+
+	/** Endpoints with the sign-in relay at `<mock>/relay`. */
+	pub fn endpoints_with_relay(&self) -> Endpoints {
+		Endpoints { relay: Some(format!("{}/relay", self.base)), ..self.endpoints() }
 	}
 }
 

@@ -15,6 +15,7 @@ pub mod logging;
 pub mod media;
 pub mod platforms;
 pub mod probe;
+pub mod relay;
 pub mod runner;
 pub mod server;
 pub mod settings;

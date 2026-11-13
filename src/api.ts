@@ -2,7 +2,8 @@ export type Platform = 'tiktok' | 'instagram' | 'youtube';
 export type State = 'queued' | 'uploading' | 'processing' | 'published' | 'failed' | 'needs_attention';
 
 export type Account = { id: string; platform: Platform; displayName: string; handle: string | null; avatarUrl: string | null; isDemo: boolean; status: string; statusDetail: string | null; accessExpiresAt: number | null; connectedAt: number };
-export type PlatformInfo = { configured: boolean; available: boolean; mode: string; note: string; limits: { note: string } };
+/** `hosted`: connects with one click through the app's sign-in service (Windows build only; absent elsewhere). */
+export type PlatformInfo = { configured: boolean; hosted?: boolean; available: boolean; mode: string; note: string; limits: { note: string } };
 export type Config = { demoMode: boolean; publicBaseUrl: boolean; platforms: Record<Platform, PlatformInfo> };
 export type Media = { id: string; filename: string; size: number; duration: number | null; width: number | null; height: number | null; videoCodec: string | null; audioCodec: string | null; shortsShape: boolean; issues: Record<Platform, string[]>; previewUrl?: string };
 export type Target = { id: string; platform: Platform; account: { name: string; handle: string | null; avatarUrl: string | null; isDemo: boolean }; settings: any; state: State; phase: string | null; progress: number; attempts: number; outcomeUnknown: boolean; accountStatus: string; nextRunAt: number | null; error: string | null; permalink: string | null; updatedAt: number; events: { at: number; message: string }[] };

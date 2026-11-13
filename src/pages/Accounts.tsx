@@ -157,6 +157,9 @@ export function AccountsPage({ accounts, config, refresh, refreshConfig }: { acc
 	const [busy, setBusy] = useState<string | null>(null);
 	const [setup, setSetup] = useState<Setup | null>(null);
 	const [editing, setEditing] = useState<Platform | null>(null);
+	// One-click platforms hide developer keys unless the owner asks for them.
+	const [devKeys, setDevKeys] = useState(false);
+	const anyHosted = (['youtube', 'instagram', 'tiktok'] as Platform[]).some((p) => config.platforms[p].hosted);
 
 	useEffect(() => {
 		api.setup().then(setSetup).catch(() => undefined);
@@ -231,6 +234,7 @@ export function AccountsPage({ accounts, config, refresh, refreshConfig }: { acc
 				const real = list.filter((a) => !a.isDemo);
 				const open = editing === p;
 				const short = p === 'youtube' ? 'Videos and Shorts' : p === 'instagram' ? (info.available || !info.configured ? 'Reels on a Professional account' : 'Needs a public address to publish') : 'Sends to your TikTok drafts';
+				const hosted = Boolean(info.hosted);
 				return (
 					<div className="panel plat" key={p}>
 						<div className="plat-head">
@@ -239,13 +243,15 @@ export function AccountsPage({ accounts, config, refresh, refreshConfig }: { acc
 								<b>{PLATFORM_NAME[p]}</b>
 								<small>{info.configured ? short : 'Not set up yet · about 5 minutes'}</small>
 							</div>
+							{hosted && devKeys && !open && <button className="btn sm quiet" onClick={() => setEditing(p)}>Own keys</button>}
 							{info.configured ? (
 								!open && <button className={`btn sm ${real.length ? '' : 'primary'}`} onClick={() => connectPlatform(p)}>{real.length ? 'Add another' : 'Connect'}</button>
 							) : (
 								<button className={`btn sm ${open || p !== firstUnset ? '' : 'primary'}`} onClick={() => setEditing(open ? null : p)}>{open ? 'Close' : 'Set up'}</button>
 							)}
 						</div>
-						{info.configured && !open && s && (
+						{p === 'instagram' && hosted && !real.length && !open && <div className="hint pad" style={{ paddingTop: 0 }}>Needs an Instagram Professional account (Business or Creator). You can switch for free in the Instagram app’s settings.</div>}
+						{info.configured && !hosted && !open && s && (
 							<div className="keyline">
 								<span className="dot" style={{ background: 'var(--ok)' }} />
 								<span className="grow ellipsis">App keys {s.source === 'env' ? 'from .env' : 'saved'} · <span className="mono">{s.idPreview}</span></span>
@@ -276,7 +282,12 @@ export function AccountsPage({ accounts, config, refresh, refreshConfig }: { acc
 					</div>
 				);
 			})}
-			<p className="faint" style={{ fontSize: 12 }}>Accounts connect through each platform’s official sign-in page. This app never sees your passwords. Keys and sign-in tokens are encrypted on the server and never sent to the browser.</p>
+			<p className="faint" style={{ fontSize: 12 }}>
+				{anyHosted
+					? <>Accounts connect through each platform’s official sign-in page. This app never sees your passwords, and sign-in tokens stay encrypted on this {computer}.</>
+					: 'Accounts connect through each platform’s official sign-in page. This app never sees your passwords. Keys and sign-in tokens are encrypted on the server and never sent to the browser.'}
+				{anyHosted && <> <button className="btn sm quiet" style={{ fontSize: 12 }} onClick={() => setDevKeys(!devKeys)}>{devKeys ? 'Hide developer keys' : 'Use my own developer keys'}</button></>}
+			</p>
 		</>
 	);
 }
