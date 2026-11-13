@@ -116,73 +116,102 @@ pub async fn revoke_tiktok(app: &App, access_token: Option<&str>) {
 
 // ---------- Instagram video hosting ----------
 
+/// A file Instagram downloads from the relay: the video, or the Reel's cover image.
+pub struct Hosted<'a> {
+	/// Prefix of the keys kept in the destination's checkpoints, for example `hosted` or `hostedCover`.
+	pub prefix: &'a str,
+	pub path: &'a str,
+	pub size: u64,
+	pub mime: &'a str,
+	pub what: &'a str,
+}
+
 /// Instagram Login can only publish a Reel from a public URL. Without a tunnel of the owner's own,
 /// the video is uploaded to the relay's temporary storage and Instagram downloads it from a signed
 /// link. The link is reused while it has at least 30 minutes left.
 pub async fn host_media(ctx: &mut Ctx, ig_token: &str) -> Result<String, PubError> {
+	let (path, mime) = (ctx.media.path.clone(), ctx.media.mime.clone());
+	host_file(ctx, ig_token, Hosted { prefix: "hosted", path: &path, size: ctx.media.size.max(0) as u64, mime: &mime, what: "video" }).await
+}
+
+pub async fn host_file(ctx: &mut Ctx, ig_token: &str, f: Hosted<'_>) -> Result<String, PubError> {
+	let key_of = |k: &str| format!("{}{k}", f.prefix);
 	let rf = ctx.rf();
-	if let (Some(url), Some(exp)) = (rf["hostedUrl"].as_str(), rf["hostedExp"].as_i64()) {
+	if let (Some(url), Some(exp)) = (rf[key_of("Url")].as_str(), rf[key_of("Exp")].as_i64()) {
 		if exp - now_ms() > 30 * 60_000 {
 			return Ok(url.to_string());
 		}
 	}
-	ctx.need_file()?;
+	if !std::path::Path::new(f.path).exists() {
+		ctx.need_file()?;
+		return Err(PubError::permanent(format!("The {} is no longer on this computer.", f.what)));
+	}
 	let app = ctx.app.clone();
 	let b = base(&app).ok_or_else(|| PubError::attention("Instagram needs a public address to download the video from, and this build has no sign-in service."))?.to_string();
-	let size = ctx.media.size.max(0) as u64;
-	let created = json(&app, Req::post(&format!("{b}/media")).bearer(ig_token).json_body(&j!({ "size": size, "type": ctx.media.mime }))).await?;
+	let size = f.size;
+	let created = json(&app, Req::post(&format!("{b}/media")).bearer(ig_token).json_body(&j!({ "size": size, "type": f.mime }))).await?;
 	let (id, upload_id, key) = (js_str(&created["id"]), js_str(&created["uploadId"]), js_str(&created["key"]));
 	let part_size = created["partSize"].as_u64().filter(|n| *n > 0).unwrap_or(50 * 1024 * 1024);
 	if id.is_empty() || upload_id.is_empty() || key.is_empty() {
-		return Err(PubError::transient("The sign-in service did not start the video upload"));
+		return Err(PubError::transient(format!("The sign-in service did not start the {} upload", f.what)));
 	}
-	ctx.log("Uploading the video to temporary storage so Instagram can download it.");
-	let mut file = tokio::fs::File::open(&ctx.media.path).await.map_err(|e| PubError::transient(format!("Could not read the video: {e}")))?;
+	ctx.log(&format!("Uploading the {} to temporary storage so Instagram can download it.", f.what));
+	let read_err = |e: std::io::Error| PubError::transient(format!("Could not read the {}: {e}", f.what));
+	let mut file = tokio::fs::File::open(f.path).await.map_err(read_err)?;
 	let mut parts = Vec::new();
 	let mut sent = 0u64;
 	let mut n = 1u32;
 	while sent < size {
 		let len = part_size.min(size - sent) as usize;
 		let mut buf = vec![0u8; len];
-		file.seek(std::io::SeekFrom::Start(sent)).await.map_err(|e| PubError::transient(format!("Could not read the video: {e}")))?;
-		file.read_exact(&mut buf).await.map_err(|e| PubError::transient(format!("Could not read the video: {e}")))?;
+		file.seek(std::io::SeekFrom::Start(sent)).await.map_err(read_err)?;
+		file.read_exact(&mut buf).await.map_err(read_err)?;
 		let url = format!("{b}/media/{id}/parts/{n}?uploadId={}", encode_component(&upload_id));
 		let r = json(&app, Req::put(&url).header("x-media-key", key.clone()).body(buf).timeout(10 * 60_000)).await?;
 		parts.push(j!({ "partNumber": r["partNumber"].as_u64().unwrap_or(n as u64), "etag": js_str(&r["etag"]) }));
 		sent += len as u64;
 		n += 1;
-		ctx.save(crate::jobs::Patch::new().state("uploading").phase("hosting").progress(0.05 * (sent as f64 / size.max(1) as f64)));
+		if f.prefix == "hosted" {
+			ctx.save(crate::jobs::Patch::new().state("uploading").phase("hosting").progress(0.05 * (sent as f64 / size.max(1) as f64)));
+		}
 	}
 	let done = json(&app, Req::post(&format!("{b}/media/{id}/complete")).header("x-media-key", key.clone()).json_body(&j!({ "uploadId": upload_id, "parts": parts }))).await?;
 	let url = js_str(&done["url"]);
 	if url.is_empty() {
-		return Err(PubError::transient("The sign-in service did not return a video link"));
+		return Err(PubError::transient(format!("The sign-in service did not return a {} link", f.what)));
 	}
 	let mut r = ctx.rf();
-	r["hostedId"] = Value::from(id);
-	r["hostedKey"] = Value::from(key);
-	r["hostedUrl"] = Value::from(url.clone());
-	r["hostedExp"] = Value::from(done["expiresAt"].as_i64().unwrap_or(now_ms() + 6 * 3600 * 1000));
+	r[key_of("Id")] = Value::from(id);
+	r[key_of("Key")] = Value::from(key);
+	r[key_of("Url")] = Value::from(url.clone());
+	r[key_of("Exp")] = Value::from(done["expiresAt"].as_i64().unwrap_or(now_ms() + 6 * 3600 * 1000));
 	ctx.save(crate::jobs::Patch::new().rf(r));
 	Ok(url)
 }
 
-/// Deletes the hosted copy once Instagram has it (or no longer needs it). Best effort: the relay
-/// deletes anything left over within 24 hours.
+/// Deletes the hosted copies (video and cover) once Instagram has them, or no longer needs them.
+/// Best effort: the relay deletes anything left over within 24 hours.
 pub async fn release_media(ctx: &mut Ctx) {
 	let mut r = ctx.rf();
-	let (id, key) = (js_str(&r["hostedId"]), js_str(&r["hostedKey"]));
-	if id.is_empty() || key.is_empty() {
-		return;
-	}
-	if let Some(b) = base(&ctx.app) {
-		let url = format!("{b}/media/{id}");
-		let _ = send(&ctx.app, Req::new(reqwest::Method::DELETE, &url).header("x-media-key", key)).await;
-	}
-	if let Some(o) = r.as_object_mut() {
-		for k in ["hostedId", "hostedKey", "hostedUrl", "hostedExp"] {
-			o.remove(k);
+	let mut changed = false;
+	for prefix in ["hosted", "hostedCover"] {
+		let k = |s: &str| format!("{prefix}{s}");
+		let (id, key) = (js_str(&r[k("Id")]), js_str(&r[k("Key")]));
+		if id.is_empty() || key.is_empty() {
+			continue;
 		}
+		if let Some(b) = base(&ctx.app) {
+			let url = format!("{b}/media/{id}");
+			let _ = send(&ctx.app, Req::new(reqwest::Method::DELETE, &url).header("x-media-key", key)).await;
+		}
+		if let Some(o) = r.as_object_mut() {
+			for s in ["Id", "Key", "Url", "Exp"] {
+				o.remove(&k(s));
+			}
+		}
+		changed = true;
 	}
-	ctx.save(crate::jobs::Patch::new().rf(r));
+	if changed {
+		ctx.save(crate::jobs::Patch::new().rf(r));
+	}
 }

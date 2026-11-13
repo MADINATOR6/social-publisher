@@ -32,7 +32,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 const DESKTOP_COOKIE: &str = "sp_desktop";
 /// What this backend can do beyond the original contract. The shared UI shows a feature only when it
 /// is listed here, so the Mac app (whose server sends none) keeps its screens unchanged.
-const FEATURES: &[&str] = &["schedule", "notifications", "markPosted", "repost"];
+const FEATURES: &[&str] = &["schedule", "notifications", "markPosted", "repost", "covers"];
 const SIGN_IN_HOSTS: [&str; 4] = ["accounts.google.com", "www.instagram.com", "api.instagram.com", "www.tiktok.com"];
 
 #[derive(rust_embed::RustEmbed)]
@@ -59,6 +59,8 @@ pub fn router(app: Arc<App>) -> Router {
 		.route("/api/media", put(media_put).layer(DefaultBodyLimit::disable()))
 		.route("/api/media/{id}", get(media_get))
 		.route("/m/{token}", get(media_file))
+		.route("/api/covers", put(cover_put).layer(DefaultBodyLimit::max(crate::covers::MAX_BYTES + 1024)))
+		.route("/api/covers/{id}", get(cover_get))
 		.route("/api/posts", get(posts_list).post(posts_create))
 		.route("/api/posts/{id}", get(post_get))
 		.route("/api/posts/{id}/retry", post(post_retry))
@@ -651,7 +653,8 @@ async fn posts_create(State(app): S, body: Bytes) -> Response {
 		}
 		let own = js_str(&settings["captionOverride"]);
 		let effective = if own.trim().is_empty() { caption.to_string() } else { own.trim().to_string() };
-		for i in validate_media(a.platform, &info, &m.mime, &m.filename).into_iter().chain(platforms::validate_settings(&app, a.platform, &settings, &effective)) {
+		for i in validate_media(a.platform, &info, &m.mime, &m.filename).into_iter().chain(platforms::validate_settings(&app, a.platform, &settings, &effective)).chain(crate::covers::issues(&app, a.platform, &settings))
+		{
 			let field = if i.field == "media" { format!("media.{}", a.platform.as_str()) } else { i.field };
 			issues.push(Issue::new(field, i.message));
 		}
@@ -974,4 +977,18 @@ async fn target_posted(State(app): S, Path(id): Path<String>, body: Bytes) -> Re
 		Ok(post_id) => ok(json!({ "post": jobs::post_view(&app, &post_id) })),
 		Err(m) => fail(409, m),
 	}
+}
+
+/** Saves a cover image (JPEG or PNG, up to 8 MB) for a YouTube thumbnail or an Instagram cover. */
+async fn cover_put(State(app): S, body: Bytes) -> Response {
+	match crate::covers::save(&app, &body) {
+		Ok(v) => ok(v),
+		Err(m) => fail(422, m),
+	}
+}
+
+async fn cover_get(State(app): S, Path(id): Path<String>, headers: HeaderMap) -> Response {
+	let not_found = || (StatusCode::NOT_FOUND, "Not found").into_response();
+	let Some(m) = crate::covers::get(&app, &id) else { return not_found() };
+	send_file(&m, &headers).await.unwrap_or_else(not_found)
 }

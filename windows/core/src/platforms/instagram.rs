@@ -193,6 +193,22 @@ pub async fn run(ctx: &mut Ctx) -> Result<Outcome, PubError> {
 		if !thumb.is_null() && thumb != "" {
 			params.push(("thumb_offset", (js_num(thumb).round() as i64).to_string()));
 		}
+		// A cover image the owner chose replaces the cover frame. A missing one is skipped, never fatal.
+		if let Some(cover_id) = crate::covers::chosen(&ctx.settings).map(String::from) {
+			match crate::covers::get(&app, &cover_id) {
+				Some(c) => {
+					let url = match src {
+						Source::Relay => {
+							let f = crate::relay::Hosted { prefix: "hostedCover", path: &c.path, size: c.size.max(0) as u64, mime: &c.mime, what: "cover image" };
+							crate::relay::host_file(ctx, &token, f).await?
+						}
+						_ => public_media_url(&app, &c.id),
+					};
+					params.push(("cover_url", url));
+				}
+				None => ctx.log("The chosen cover image is no longer on this computer, so Instagram picks the cover."),
+			}
+		}
 		let pairs: Vec<(&str, &str)> = params.iter().map(|(k, v)| (*k, v.as_str())).collect();
 		let c = json(&app, Req::post(&format!("{g}/{ig_id}/media")).bearer(&token).form(&pairs)).await?;
 		// Keep any hosted-video details next to the container, so the copy can be deleted later.

@@ -61,6 +61,13 @@ export const api = {
 	/** `at` null publishes now. */
 	schedule: (id: string, at: number | null) => call<{ post: Post }>('POST', `/api/posts/${id}/schedule`, { at }),
 	markPosted: (targetId: string, permalink: string) => call<{ post: Post }>('POST', `/api/targets/${targetId}/posted`, { permalink }),
+	/** Saves a cover image (JPEG or PNG, up to 8 MB). */
+	uploadCover: async (file: File) => {
+		const res = await fetch('/api/covers', { method: 'PUT', credentials: 'same-origin', headers: { 'X-Requested-With': 'social-publisher', 'Content-Type': file.type || 'application/octet-stream' }, body: file });
+		const data = await res.json().catch(() => ({}));
+		if (!res.ok) throw new ApiError(data.error ?? `Upload failed (${res.status})`, res.status);
+		return data as { id: string; mime: string; size: number; width: number | null; height: number | null; url: string };
+	},
 	prefs: () => call<{ notifications: boolean }>('GET', '/api/desktop/prefs'),
 	setPrefs: (p: { notifications: boolean }) => call<{ notifications: boolean }>('PUT', '/api/desktop/prefs', p),
 	cancelSchedule: (id: string) => call<{ post: Post }>('POST', `/api/posts/${id}/cancel`, {}),

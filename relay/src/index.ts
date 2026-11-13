@@ -69,7 +69,8 @@ export const MAX_MEDIA = 1024 * 1024 * 1024;
 /** Media links stay valid for 6 hours; objects are deleted after 24 hours at the latest. */
 const LINK_SECONDS = 6 * 3600;
 const KEEP_MS = 24 * 3600 * 1000;
-const VIDEO_TYPES = ['video/mp4', 'video/quicktime'];
+// Videos, and the JPEG cover images Instagram can take for a Reel.
+const MEDIA_TYPES = ['video/mp4', 'video/quicktime', 'image/jpeg', 'image/png'];
 
 const GOOGLE_TOKEN = 'https://oauth2.googleapis.com/token';
 const TIKTOK = 'https://open.tiktokapis.com';
@@ -292,7 +293,7 @@ async function mediaCreate(request: Request, env: Env): Promise<Response> {
 	const size = Number(b?.size);
 	if (!Number.isSafeInteger(size) || size <= 0) return json(400, { error: 'invalid_request', error_description: 'Missing size.' });
 	if (size > MAX_MEDIA) return json(413, { error: 'too_large', error_description: 'Instagram accepts videos up to 1 GB.' });
-	const type = VIDEO_TYPES.includes(String(b?.type)) ? String(b?.type) : 'video/mp4';
+	const type = MEDIA_TYPES.includes(String(b?.type)) ? String(b?.type) : 'video/mp4';
 	const id = [...crypto.getRandomValues(new Uint8Array(16))].map((x) => x.toString(16).padStart(2, '0')).join('');
 	const mpu = await env.MEDIA!.createMultipartUpload(objectKey(id), { httpMetadata: { contentType: type } });
 	return json(200, { id, uploadId: mpu.uploadId, key: await hmac(env, `media:${id}`), partSize: PART_SIZE });

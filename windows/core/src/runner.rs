@@ -161,7 +161,8 @@ pub fn cleanup_media(app: &App) -> usize {
 	let rows: Vec<(String, String)> = db
 		.prepare(
 			"SELECT m.id, m.path FROM media m WHERE m.deleted_at IS NULL AND m.created_at < ?
-			AND NOT EXISTS (SELECT 1 FROM posts p JOIN targets t ON t.post_id = p.id WHERE p.media_id = m.id AND t.state IN ('queued','uploading','processing'))",
+			AND NOT EXISTS (SELECT 1 FROM posts p JOIN targets t ON t.post_id = p.id WHERE p.media_id = m.id AND t.state IN ('queued','uploading','processing'))
+			AND NOT EXISTS (SELECT 1 FROM targets t WHERE t.state IN ('queued','uploading','processing') AND instr(t.settings, m.id) > 0)",
 		)
 		.and_then(|mut st| st.query_map([cutoff], |r| Ok((r.get(0)?, r.get(1)?))).map(|r| r.flatten().collect()))
 		.unwrap_or_default();

@@ -16,7 +16,7 @@ export type Draft = {
 };
 
 const KEY = 'sp.draft.v1';
-const ALLOWED = new Set(['overrideOn', 'captionOverride', 'mode', 'privacy', 'allowComments', 'allowDuet', 'allowStitch', 'shareToFeed', 'thumbSec', 'title', 'titleTouched', 'description', 'madeForKids', 'categoryId']);
+const ALLOWED = new Set(['overrideOn', 'captionOverride', 'mode', 'privacy', 'allowComments', 'allowDuet', 'allowStitch', 'shareToFeed', 'thumbSec', 'title', 'titleTouched', 'description', 'madeForKids', 'categoryId', 'coverId', 'coverUrl']);
 
 export function loadDraft(): Draft | null {
 	try {

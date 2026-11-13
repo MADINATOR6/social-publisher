@@ -196,6 +196,8 @@ pub async fn run(ctx: &mut Ctx) -> Result<Outcome, PubError> {
 		ctx.save(Patch::new().remote_id(video_id).state("processing").phase("processing").progress(1.0));
 	}
 
+	set_thumbnail(ctx).await;
+
 	// Wait for YouTube to accept the upload before calling it published.
 	let id = ctx.target.remote_id.clone().unwrap_or_default();
 	for i in 0..180 {
@@ -250,4 +252,34 @@ fn session_gone(ctx: &mut Ctx) -> PubError {
 
 fn range_end(range: Option<&str>) -> u64 {
 	range.and_then(|r| r.split('-').nth(1)).and_then(|e| e.trim().parse::<u64>().ok()).map(|e| e + 1).unwrap_or(0)
+}
+
+/** Records that the thumbnail step is over, with a note for the owner. */
+fn done(ctx: &mut Ctx, note: &str) {
+	ctx.log(note);
+	let mut r = ctx.rf();
+	r["thumbDone"] = Value::Bool(true);
+	ctx.save(Patch::new().rf(r));
+}
+
+/// Sets the custom thumbnail the owner chose, once the video exists. Best effort: YouTube only
+/// allows custom thumbnails on channels it has verified, and a refused thumbnail must never fail a
+/// video that uploaded fine, so problems are recorded as events and the default thumbnail stays.
+async fn set_thumbnail(ctx: &mut Ctx) {
+	let Some(cover_id) = crate::covers::chosen(&ctx.settings).map(String::from) else { return };
+	let (Some(video_id), false) = (ctx.target.remote_id.clone(), js_truthy(&ctx.rf()["thumbDone"])) else { return };
+	let Some(cover) = crate::covers::get(&ctx.app, &cover_id) else { return done(ctx, "The chosen thumbnail is no longer on this computer, so YouTube keeps its own.") };
+	let Ok(bytes) = tokio::fs::read(&cover.path).await else { return done(ctx, "Could not read the chosen thumbnail, so YouTube keeps its own.") };
+	let token = match ctx.token().await {
+		Ok(t) => t,
+		Err(_) => return,
+	};
+	let app = ctx.app.clone();
+	let url = format!("{}/thumbnails/set?videoId={}&uploadType=media", app.endpoints.youtube_upload, encode_component(&video_id));
+	match json(&app, Req::post(&url).bearer(&token).header("Content-Type", cover.mime.clone()).body(bytes).timeout(120_000)).await {
+		Ok(_) => done(ctx, "Custom thumbnail set."),
+		// A network problem is worth another try on the next attempt; anything else is final.
+		Err(PubError::Transient { msg, .. }) => ctx.log(&format!("Thumbnail not set yet: {msg}")),
+		Err(e) => done(ctx, &format!("YouTube did not accept the thumbnail ({}). Custom thumbnails need a verified channel: youtube.com/verify.", e.message())),
+	}
 }

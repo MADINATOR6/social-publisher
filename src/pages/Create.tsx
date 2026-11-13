@@ -18,6 +18,8 @@ function defaults(p: Platform, filename: string): Settings {
 
 /** A <input type="datetime-local"> value for a time, in this computer's time zone. */
 export const toLocalInput = (ms: number) => new Date(ms - new Date(ms).getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+/** The cover a published destination used, for Post again. */
+const coverOf = (s: Settings) => (s.coverId ? { coverId: String(s.coverId), coverUrl: `/api/covers/${s.coverId}` } : {});
 const nextHalfHour = () => Math.ceil((Date.now() + 15 * 60_000) / 1_800_000) * 1_800_000;
 
 const PREVIEW_LABEL: Record<Platform, string> = { tiktok: 'TikTok', instagram: 'Reels', youtube: 'Shorts' };
@@ -43,6 +45,7 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 	const [busy, setBusy] = useState(false);
 	const [key, setKey] = useState(newKey);
 	const canSchedule = has(config, 'schedule');
+	const canCover = has(config, 'covers');
 	const [scheduleOn, setScheduleOn] = useState(false);
 	const [when, setWhen] = useState(() => toLocalInput(nextHalfHour()));
 	const whenMs = new Date(when).getTime();
@@ -69,8 +72,8 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 			const s = t.settings ?? {};
 			const own = String(s.captionOverride ?? '');
 			if (t.platform === 'tiktok') form[t.accountId!] = { ...defaults('tiktok', p.media.filename), overrideOn: Boolean(own.trim()), captionOverride: own, mode: s.mode ?? 'inbox', privacy: s.privacy ?? 'SELF_ONLY', allowComments: s.allowComments ?? true, allowDuet: s.allowDuet ?? false, allowStitch: s.allowStitch ?? false };
-			else if (t.platform === 'instagram') form[t.accountId!] = { ...defaults('instagram', p.media.filename), overrideOn: Boolean(own.trim()), captionOverride: own, shareToFeed: s.shareToFeed !== false, thumbSec: s.thumbOffsetMs == null ? '' : String(Number(s.thumbOffsetMs) / 1000) };
-			else form[t.accountId!] = { ...defaults('youtube', p.media.filename), title: String(s.title ?? ''), titleTouched: true, description: s.description && s.description !== p.caption ? String(s.description) : '', privacy: s.privacy ?? '', madeForKids: typeof s.madeForKids === 'boolean' ? s.madeForKids : null, categoryId: String(s.categoryId ?? '22') };
+			else if (t.platform === 'instagram') form[t.accountId!] = { ...defaults('instagram', p.media.filename), overrideOn: Boolean(own.trim()), captionOverride: own, shareToFeed: s.shareToFeed !== false, ...coverOf(s), thumbSec: s.thumbOffsetMs == null ? '' : String(Number(s.thumbOffsetMs) / 1000) };
+			else form[t.accountId!] = { ...defaults('youtube', p.media.filename), title: String(s.title ?? ''), titleTouched: true, description: s.description && s.description !== p.caption ? String(s.description) : '', privacy: s.privacy ?? '', madeForKids: typeof s.madeForKids === 'boolean' ? s.madeForKids : null, categoryId: String(s.categoryId ?? '22'), ...coverOf(s) };
 		}
 		setCaption(p.caption);
 		setSelected(picked.map((t) => t.accountId!));
@@ -273,8 +276,9 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 					const s = settings[a.id];
 					const common = { captionOverride: s.overrideOn ? s.captionOverride : '' };
 					if (a.platform === 'tiktok') return { accountId: a.id, settings: { ...common, mode: s.mode, privacy: s.privacy, allowComments: s.allowComments, allowDuet: s.allowDuet, allowStitch: s.allowStitch } };
-					if (a.platform === 'instagram') return { accountId: a.id, settings: { ...common, shareToFeed: s.shareToFeed, thumbOffsetMs: s.thumbSec === '' ? null : Math.round(Number(s.thumbSec) * 1000) } };
-					return { accountId: a.id, settings: { title: s.title, description: s.description || caption, privacy: s.privacy, madeForKids: s.madeForKids, categoryId: s.categoryId } };
+					const cover = canCover && s.coverId ? { coverId: s.coverId } : {};
+					if (a.platform === 'instagram') return { accountId: a.id, settings: { ...common, ...cover, shareToFeed: s.shareToFeed, thumbOffsetMs: s.thumbSec === '' ? null : Math.round(Number(s.thumbSec) * 1000) } };
+					return { accountId: a.id, settings: { ...cover, title: s.title, description: s.description || caption, privacy: s.privacy, madeForKids: s.madeForKids, categoryId: s.categoryId } };
 				}),
 			});
 			setPost(r.post);
@@ -451,7 +455,7 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 									</button>
 								))}
 							</div>
-							<PlatformFields a={activeTab} s={settings[activeTab.id] ?? defaults(activeTab.platform, filename)} set={(p) => set(activeTab.id, p)} issues={issues} info={config.platforms[activeTab.platform]} caption={caption} media={media} locked={locked} />
+							<PlatformFields a={activeTab} s={settings[activeTab.id] ?? defaults(activeTab.platform, filename)} set={(p) => set(activeTab.id, p)} issues={issues} info={config.platforms[activeTab.platform]} caption={caption} media={media} locked={locked} canCover={canCover} />
 						</div>
 					)}
 
@@ -506,7 +510,7 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 	);
 }
 
-function PlatformFields({ a, s, set, issues, info, caption, media, locked }: { a: Account; s: Settings; set: (p: Settings) => void; issues: Issue[]; info: Config['platforms'][Platform]; caption: string; media?: Media; locked: boolean }) {
+function PlatformFields({ a, s, set, issues, info, caption, media, locked, canCover = false }: { a: Account; s: Settings; set: (p: Settings) => void; issues: Issue[]; info: Config['platforms'][Platform]; caption: string; media?: Media; locked: boolean; canCover?: boolean }) {
 	return (
 		<div className="fields" role="tabpanel">
 			<FieldError issues={issues} field={`media.${a.platform}`} />
@@ -535,6 +539,7 @@ function PlatformFields({ a, s, set, issues, info, caption, media, locked }: { a
 						<summary>Why not post directly?</summary>
 						<p>TikTok only lets audited apps post publicly, and it does not audit personal tools that post to your own accounts. Sending it to your TikTok inbox is the supported way: TikTok notifies you, and you add sounds or effects and post it from the app. Nothing is public until you do.</p>
 					</details>
+					{canCover && <div className="hint">TikTok lets you pick the cover when you finish the draft in the TikTok app.</div>}
 					{info.mode === 'direct' && !a.isDemo && (
 						<div style={{ marginTop: 12 }}>
 							<Seg label="TikTok mode" value={s.mode} onChange={(v) => set({ mode: v })} options={[{ value: 'inbox', label: 'Inbox' }, { value: 'direct', label: 'Direct (private only)', disabled: locked }]} />
@@ -557,6 +562,7 @@ function PlatformFields({ a, s, set, issues, info, caption, media, locked }: { a
 						</div>
 						<FieldError issues={issues} field="instagram.thumb" />
 					</label>
+					{canCover && <CoverPicker label="Cover image" hint="JPEG. Replaces the cover frame above." s={s} set={set} locked={locked} accept="image/jpeg" issues={issues} field="instagram.cover" />}
 					{!info.available && !a.isDemo && <div className="notice warn"><Icon.info /><span>{info.note}</span></div>}
 				</>
 			)}
@@ -585,9 +591,48 @@ function PlatformFields({ a, s, set, issues, info, caption, media, locked }: { a
 							<FieldError issues={issues} field="youtube.madeForKids" />
 						</div>
 					</div>
+					{canCover && <CoverPicker label="Thumbnail" hint="JPEG or PNG, up to 2 MB, 1280×720 works best. Needs a verified YouTube channel; otherwise YouTube keeps its own." s={s} set={set} locked={locked} accept="image/jpeg,image/png" issues={issues} field="youtube.cover" />}
 					<div className="hint" style={{ marginTop: 0 }}>{media ? (media.shortsShape ? 'Vertical and 3 minutes or less, so this posts as a Short.' : 'This posts as a regular video. Shorts must be vertical or square and up to 3 minutes.') : 'Vertical videos up to 3 minutes post as Shorts.'}</div>
 				</>
 			)}
+		</div>
+	);
+}
+
+/** Chooses a cover image for one destination. The image is saved by the app straight away. */
+function CoverPicker({ label, hint, s, set, locked, accept, issues, field }: { label: string; hint: string; s: Settings; set: (p: Settings) => void; locked: boolean; accept: string; issues: Issue[]; field: string }) {
+	const ref = useRef<HTMLInputElement>(null);
+	const [busy, setBusy] = useState(false);
+	const [err, setErr] = useState<string | null>(null);
+	async function choose(f?: File | null) {
+		if (!f) return;
+		setBusy(true);
+		setErr(null);
+		try {
+			const c = await api.uploadCover(f);
+			set({ coverId: c.id, coverUrl: c.url });
+		} catch (e: any) {
+			setErr(e.message);
+		} finally {
+			setBusy(false);
+		}
+	}
+	return (
+		<div className="f">
+			<span>{label}</span>
+			<div className="cover-pick">
+				{s.coverUrl ? <img src={s.coverUrl} alt="" /> : <span className="cover-empty"><Icon.image /></span>}
+				<div className="stack" style={{ gap: 6 }}>
+					<div className="row" style={{ gap: 6 }}>
+						<button type="button" className="btn sm" disabled={locked || busy} onClick={() => ref.current?.click()}>{busy ? 'Saving…' : s.coverId ? 'Replace' : 'Choose image'}</button>
+						{s.coverId && <button type="button" className="btn sm quiet" disabled={locked || busy} onClick={() => set({ coverId: '', coverUrl: '' })}>Remove</button>}
+					</div>
+					<span className="hint" style={{ margin: 0 }}>{hint}</span>
+				</div>
+			</div>
+			<input ref={ref} type="file" accept={accept} hidden onChange={(e) => (choose(e.target.files?.[0]), (e.target.value = ''))} />
+			{err && <div className="err" role="alert">{err}</div>}
+			<FieldError issues={issues} field={field} />
 		</div>
 	);
 }
