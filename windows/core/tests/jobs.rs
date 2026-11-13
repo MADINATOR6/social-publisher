@@ -16,8 +16,8 @@ async fn the_same_idempotency_key_never_creates_a_second_post() {
 	let m = seed_media(&app, 1024);
 	let a = seed_account(&app, Platform::Youtube, true);
 	let t = || vec![NewTarget { account_id: a.id.clone(), platform: "youtube".into(), settings: json!({}) }];
-	let (first, dup1) = jobs::create_post(&app, "same-key-123", &m, "hi", true, &t()).unwrap();
-	let (second, dup2) = jobs::create_post(&app, "same-key-123", &m, "hi again", true, &t()).unwrap();
+	let (first, dup1) = jobs::create_post(&app, "same-key-123", &m, "hi", true, &t(), None).unwrap();
+	let (second, dup2) = jobs::create_post(&app, "same-key-123", &m, "hi again", true, &t(), None).unwrap();
 	assert_eq!(first, second);
 	assert!(!dup1 && dup2);
 	let posts: i64 = app.db().query_row("SELECT COUNT(*) FROM posts", [], |r| r.get(0)).unwrap();
@@ -33,7 +33,7 @@ async fn demo_publishing_finishes_each_destination_and_never_shows_a_link() {
 		.into_iter()
 		.map(|p| NewTarget { account_id: seed_account(&app, p, true).id, platform: p.as_str().into(), settings: json!({ "title": "T", "privacy": "private", "madeForKids": false }) })
 		.collect();
-	let (post, _) = jobs::create_post(&app, "demo-key-1234", &m, "hello", true, &targets).unwrap();
+	let (post, _) = jobs::create_post(&app, "demo-key-1234", &m, "hello", true, &targets, None).unwrap();
 	assert_eq!(runner::tick(&app, "w", 3).await, 3);
 	let view = jobs::post_view(&app, &post).unwrap();
 	assert_eq!(view["done"], true);
@@ -143,4 +143,47 @@ async fn old_videos_are_removed_only_when_every_destination_is_finished() {
 	assert_eq!(target(&app, &id).state, "published");
 	assert_eq!(runner::cleanup_media(&app), 1);
 	assert!(!std::path::Path::new(&path).exists());
+}
+
+#[tokio::test]
+async fn a_scheduled_post_waits_for_its_time_and_can_be_moved_or_cancelled() {
+	let app = app();
+	let m = seed_media(&app, 1024);
+	let a = seed_account(&app, Platform::Youtube, true);
+	let b = seed_account(&app, Platform::Tiktok, true);
+	let in_an_hour = publisher_core::util::now_ms() + 3_600_000;
+	let targets = vec![
+		NewTarget { account_id: a.id.clone(), platform: "youtube".into(), settings: json!({ "title": "T", "privacy": "private", "madeForKids": false }) },
+		NewTarget { account_id: b.id.clone(), platform: "tiktok".into(), settings: json!({}) },
+	];
+	let (post, _) = jobs::create_post(&app, "scheduled-key-1", &m, "later", true, &targets, Some(in_an_hour)).unwrap();
+
+	// Nothing is due yet, and the post says when it will go out.
+	assert!(jobs::claim_next(&app, "w").is_none());
+	let view = jobs::post_view(&app, &post).unwrap();
+	assert_eq!((view["scheduled"].clone(), view["scheduledAt"].clone()), (json!(true), json!(in_an_hour)));
+	assert!(view["targets"].as_array().unwrap().iter().all(|t| t["scheduled"] == true));
+	// The video is kept while the post waits, even past the retention period.
+	app.db().execute("UPDATE media SET created_at = 0", []).unwrap();
+	assert_eq!(runner::cleanup_media(&app), 0);
+
+	// Moving it to another time keeps it waiting; "publish now" makes it due at once.
+	assert_eq!(jobs::reschedule(&app, &post, Some(in_an_hour * 2)), 2);
+	assert!(jobs::claim_next(&app, "w").is_none());
+	assert_eq!(jobs::reschedule(&app, &post, None), 2);
+	assert_eq!(runner::tick(&app, "w", 3).await, 2);
+	let view = jobs::post_view(&app, &post).unwrap();
+	assert_eq!(view["scheduled"], false);
+	// Once started, it can no longer be moved or cancelled.
+	assert_eq!(jobs::reschedule(&app, &post, Some(in_an_hour)), 0);
+	assert_eq!(jobs::cancel_scheduled(&app, &post), 0);
+
+	// Cancelling ends the waiting destinations as failed, and Retry can still post them.
+	let (later, _) = jobs::create_post(&app, "scheduled-key-2", &m, "never mind", true, &targets[..1], Some(in_an_hour)).unwrap();
+	assert_eq!(jobs::cancel_scheduled(&app, &later), 1);
+	let t = &jobs::post_view(&app, &later).unwrap()["targets"][0];
+	assert_eq!(t["state"], "failed");
+	assert!(t["error"].as_str().unwrap().contains("Cancelled"));
+	assert_eq!(jobs::retry_targets(&app, &later, None).len(), 1);
+	assert!(jobs::claim_next(&app, "w").is_some());
 }

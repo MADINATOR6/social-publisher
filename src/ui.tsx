@@ -16,6 +16,7 @@ export const Icon = {
 	info: () => <svg {...P} width={15} height={15}><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 7.5v.5" /></svg>,
 	out: () => <svg {...P} width={14} height={14}><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 16l-4-4 4-4M6 12h10" /></svg>,
 	volume: () => <svg {...P} width={14} height={14}><path d="M11 5 6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" /></svg>,
+	clock: () => <svg {...P} width={14} height={14}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>,
 	mute: () => <svg {...P} width={14} height={14}><path d="M11 5 6 9H3v6h3l5 4zM22 9l-6 6M16 9l6 6" /></svg>,
 };
 

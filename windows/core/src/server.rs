@@ -30,6 +30,9 @@ use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 const DESKTOP_COOKIE: &str = "sp_desktop";
+/// What this backend can do beyond the original contract. The shared UI shows a feature only when it
+/// is listed here, so the Mac app (whose server sends none) keeps its screens unchanged.
+const FEATURES: &[&str] = &["schedule"];
 const SIGN_IN_HOSTS: [&str; 4] = ["accounts.google.com", "www.instagram.com", "api.instagram.com", "www.tiktok.com"];
 
 #[derive(rust_embed::RustEmbed)]
@@ -59,6 +62,8 @@ pub fn router(app: Arc<App>) -> Router {
 		.route("/api/posts", get(posts_list).post(posts_create))
 		.route("/api/posts/{id}", get(post_get))
 		.route("/api/posts/{id}/retry", post(post_retry))
+		.route("/api/posts/{id}/schedule", post(post_schedule))
+		.route("/api/posts/{id}/cancel", post(post_cancel))
 		.route("/api/desktop/enter", get(desktop_enter))
 		.route("/api/desktop/services", get(desktop_services))
 		.route("/api/desktop/pick-video", post(desktop_pick_video))
@@ -175,7 +180,7 @@ async fn config(State(app): S) -> Response {
 		})
 		.collect();
 	let video_hosting = relay::base(&app).is_some() && app.endpoints.relay_platforms.contains(&Platform::Instagram);
-	ok(json!({ "demoMode": app.cfg.demo_mode, "publicBaseUrl": !settings::public_base_url(&app).is_empty(), "videoHosting": video_hosting, "platforms": platforms }))
+	ok(json!({ "demoMode": app.cfg.demo_mode, "publicBaseUrl": !settings::public_base_url(&app).is_empty(), "videoHosting": video_hosting, "features": FEATURES, "platforms": platforms }))
 }
 
 // ---------- platform app keys (entered in the app) ----------
@@ -590,6 +595,16 @@ async fn posts_create(State(app): S, body: Bytes) -> Response {
 			shape.push(Issue::new(format!("targets.{i}"), "This destination is not valid."));
 		}
 	}
+	let scheduled_at = match &b["scheduledAt"] {
+		Value::Null => None,
+		v => match v.as_i64() {
+			Some(at) if at > now_ms() + 60_000 && at < now_ms() + MAX_SCHEDULE_MS => Some(at),
+			_ => {
+				shape.push(Issue::new("scheduledAt", "Pick a time at least a minute from now and within 60 days."));
+				None
+			}
+		},
+	};
 	if !shape.is_empty() {
 		return fail_with(400, "Check the highlighted fields.", &shape);
 	}
@@ -643,7 +658,7 @@ async fn posts_create(State(app): S, body: Bytes) -> Response {
 	if !issues.is_empty() {
 		return fail_with(422, "Fix the highlighted fields before publishing.", &issues);
 	}
-	match jobs::create_post(&app, key, &m.id, caption, demo.unwrap_or(false), &targets) {
+	match jobs::create_post(&app, key, &m.id, caption, demo.unwrap_or(false), &targets, scheduled_at) {
 		Ok((id, duplicate)) => {
 			app.wake.notify_one();
 			ok(json!({ "post": jobs::post_view(&app, &id), "duplicate": duplicate }))
@@ -664,6 +679,32 @@ async fn post_get(State(app): S, Path(id): Path<String>) -> Response {
 		Some(p) => ok(p),
 		None => fail(404, "Not found"),
 	}
+}
+
+const MAX_SCHEDULE_MS: i64 = 60 * 86_400_000;
+
+/// `{ "at": <ms> }` moves a scheduled post; `{ "at": null }` publishes it now.
+async fn post_schedule(State(app): S, Path(id): Path<String>, body: Bytes) -> Response {
+	let b = parse(&body);
+	let at = match &b["at"] {
+		Value::Null => None,
+		v => match v.as_i64() {
+			Some(at) if at > now_ms() + 60_000 && at < now_ms() + MAX_SCHEDULE_MS => Some(at),
+			_ => return fail_with(422, "Pick a time at least a minute from now and within 60 days.", &[Issue::new("scheduledAt", "Pick a time at least a minute from now and within 60 days.")]),
+		},
+	};
+	if jobs::reschedule(&app, &id, at) == 0 {
+		return fail(409, "This post has already started publishing, so its time cannot change.");
+	}
+	app.wake.notify_one();
+	ok(json!({ "post": jobs::post_view(&app, &id) }))
+}
+
+async fn post_cancel(State(app): S, Path(id): Path<String>) -> Response {
+	if jobs::cancel_scheduled(&app, &id) == 0 {
+		return fail(409, "Nothing to cancel. Only destinations still waiting for their time can be cancelled.");
+	}
+	ok(json!({ "post": jobs::post_view(&app, &id) }))
 }
 
 async fn post_retry(State(app): S, Path(id): Path<String>, body: Bytes) -> Response {

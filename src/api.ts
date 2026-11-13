@@ -5,10 +5,12 @@ export type Account = { id: string; platform: Platform; displayName: string; han
 /** `hosted`: connects with one click through the app's sign-in service (Windows build only; absent elsewhere). */
 export type PlatformInfo = { configured: boolean; hosted?: boolean; available: boolean; mode: string; note: string; limits: { note: string } };
 /** `videoHosting`: Instagram can download videos from the sign-in service's temporary storage (Windows build only). */
-export type Config = { demoMode: boolean; publicBaseUrl: boolean; videoHosting?: boolean; platforms: Record<Platform, PlatformInfo> };
+export type Config = { demoMode: boolean; publicBaseUrl: boolean; videoHosting?: boolean; features?: string[]; platforms: Record<Platform, PlatformInfo> };
+/** Whether the backend offers a feature beyond the original contract (the Windows build lists them; the Mac server lists none). */
+export const has = (c: Config | null | undefined, feature: string) => Boolean(c?.features?.includes(feature));
 export type Media = { id: string; filename: string; size: number; duration: number | null; width: number | null; height: number | null; videoCodec: string | null; audioCodec: string | null; shortsShape: boolean; issues: Record<Platform, string[]>; previewUrl?: string };
-export type Target = { id: string; platform: Platform; account: { name: string; handle: string | null; avatarUrl: string | null; isDemo: boolean }; settings: any; state: State; phase: string | null; progress: number; attempts: number; outcomeUnknown: boolean; accountStatus: string; nextRunAt: number | null; error: string | null; permalink: string | null; updatedAt: number; events: { at: number; message: string }[] };
-export type Post = { id: string; caption: string; isDemo: boolean; createdAt: number; media: { filename: string; duration: number | null; width: number | null; height: number | null; size: number; deleted: boolean }; targets: Target[]; done: boolean };
+export type Target = { id: string; platform: Platform; account: { name: string; handle: string | null; avatarUrl: string | null; isDemo: boolean }; settings: any; state: State; phase: string | null; progress: number; attempts: number; outcomeUnknown: boolean; accountStatus: string; nextRunAt: number | null; scheduled?: boolean; error: string | null; permalink: string | null; updatedAt: number; events: { at: number; message: string }[] };
+export type Post = { id: string; caption: string; isDemo: boolean; createdAt: number; scheduledAt?: number | null; scheduled?: boolean; media: { id?: string; filename: string; duration: number | null; width: number | null; height: number | null; size: number; deleted: boolean }; targets: Target[]; done: boolean };
 export type Issue = { field: string; message: string };
 export type Status = { worker: { state: 'running' | 'stale' | 'never'; lastSeenAt: number | null; startedAt: number | null }; activeJobs: number; noSignIn: boolean; demoMode: boolean; now: number };
 export type Verify = { ok: boolean; simulated?: boolean; reconnect?: boolean; checkedAt: number; message: string };
@@ -56,6 +58,9 @@ export const api = {
 	post: (id: string) => call<Post>('GET', `/api/posts/${id}`),
 	publish: (body: unknown) => call<{ post: Post; duplicate: boolean }>('POST', '/api/posts', body),
 	retry: (id: string, targetIds?: string[]) => call<{ post: Post }>('POST', `/api/posts/${id}/retry`, { targetIds }),
+	/** `at` null publishes now. */
+	schedule: (id: string, at: number | null) => call<{ post: Post }>('POST', `/api/posts/${id}/schedule`, { at }),
+	cancelSchedule: (id: string) => call<{ post: Post }>('POST', `/api/posts/${id}/cancel`, {}),
 };
 
 /** Upload with progress. The server streams the body straight to disk. */

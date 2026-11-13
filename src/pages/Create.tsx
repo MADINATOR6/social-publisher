@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { api, ApiError, fmtBytes, fmtDur, PLATFORM_NAME, uploadVideo, type Account, type Config, type Issue, type Media, type Platform, type Post, type Verify } from '../api';
+import { api, ApiError, fmtBytes, fmtDur, has, PLATFORM_NAME, uploadVideo, type Account, type Config, type Issue, type Media, type Platform, type Post, type Verify } from '../api';
 import { Avatar, FieldError, Icon, PlatformMark, Seg, Toggle } from '../ui';
 import { clearDraft, loadDraft, saveDraft } from '../draft';
 import { issuesFor, Readiness, TIKTOK_INBOX_LABEL } from './Readiness';
@@ -15,6 +15,10 @@ function defaults(p: Platform, filename: string): Settings {
 	if (p === 'instagram') return { ...base, shareToFeed: true, thumbSec: '' };
 	return { ...base, title: filename.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').slice(0, 100), description: '', privacy: '', madeForKids: null, categoryId: '22' };
 }
+
+/** A <input type="datetime-local"> value for a time, in this computer's time zone. */
+export const toLocalInput = (ms: number) => new Date(ms - new Date(ms).getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+const nextHalfHour = () => Math.ceil((Date.now() + 15 * 60_000) / 1_800_000) * 1_800_000;
 
 const PREVIEW_LABEL: Record<Platform, string> = { tiktok: 'TikTok', instagram: 'Reels', youtube: 'Shorts' };
 
@@ -38,6 +42,10 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 	const [formError, setFormError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [key, setKey] = useState(newKey);
+	const canSchedule = has(config, 'schedule');
+	const [scheduleOn, setScheduleOn] = useState(false);
+	const [when, setWhen] = useState(() => toLocalInput(nextHalfHour()));
+	const whenMs = new Date(when).getTime();
 	const [post, setPost] = useState<Post | null>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
 
@@ -160,6 +168,7 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 		if (upload.status !== 'done') out.push({ field: 'media', message: upload.status === 'uploading' ? 'Wait for the upload to finish.' : upload.status === 'restoring' ? 'Finding the video from your draft…' : 'Add a video first.' });
 		if (!chosen.length) out.push({ field: 'targets', message: 'Choose at least one destination.' });
 		if (mixDemo) out.push({ field: 'targets', message: 'Demo and real accounts cannot be in the same post.' });
+		if (scheduleOn && !(whenMs > Date.now() + 60_000 && whenMs < Date.now() + 60 * 86_400_000)) out.push({ field: 'scheduledAt', message: 'Pick a time at least a minute from now and within 60 days.' });
 		for (const a of chosen) {
 			const s = settings[a.id] ?? {};
 			const cap = s.overrideOn && s.captionOverride.trim() ? s.captionOverride : caption;
@@ -214,6 +223,7 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 				idempotencyKey: key,
 				mediaId: upload.media!.id,
 				caption,
+				...(scheduleOn ? { scheduledAt: whenMs } : {}),
 				targets: chosen.map((a) => {
 					const s = settings[a.id];
 					const common = { captionOverride: s.overrideOn ? s.captionOverride : '' };
@@ -248,6 +258,7 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 		setFormError(null);
 		setNotice(null);
 		setKey(newKey());
+		setScheduleOn(false);
 	}
 
 	function discard() {
@@ -431,8 +442,16 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 								)}
 								{hasDraft && <span className="draft-tag">Draft saved<button type="button" className="linkish" onClick={discard}>Discard draft</button></span>}
 							</div>
+							{canSchedule && (
+								<div className="schedule">
+									<button type="button" className={`btn sm ${scheduleOn ? 'on' : 'quiet'}`} aria-pressed={scheduleOn} onClick={() => setScheduleOn(!scheduleOn)} title="Publish later, at a time you pick">
+										<Icon.clock /> {scheduleOn ? 'Scheduled' : 'Schedule'}
+									</button>
+									{scheduleOn && <input className={`field mono ${issues.some((i) => i.field === 'scheduledAt') ? 'bad' : ''}`} type="datetime-local" value={when} min={toLocalInput(Date.now() + 2 * 60_000)} onChange={(e) => setWhen(e.target.value)} aria-label="Publish at" />}
+								</div>
+							)}
 							<button className="btn primary big" data-sfx="launch" onClick={publish} disabled={busy || blocking > 0} aria-busy={busy} title={blocking ? 'Fix the items in the checklist first' : undefined}>
-								<Icon.play /> {busy ? 'Starting…' : anyDemo ? 'Publish (simulated)' : 'Publish'}
+								{scheduleOn ? <Icon.clock /> : <Icon.play />} {busy ? 'Starting…' : scheduleOn ? (anyDemo ? 'Schedule (simulated)' : 'Schedule') : anyDemo ? 'Publish (simulated)' : 'Publish'}
 							</button>
 						</div>
 					)}

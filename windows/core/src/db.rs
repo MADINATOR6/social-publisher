@@ -146,7 +146,18 @@ fn migrate(c: &Connection) -> rusqlite::Result<()> {
 		beat_at INTEGER NOT NULL
 	);
 	"#,
-	)
+	)?;
+	// Added by the Windows app. Optional columns, so the Mac app can still open the same database.
+	add_column(c, "posts", "scheduled_at", "INTEGER")?;
+	Ok(())
+}
+
+fn add_column(c: &Connection, table: &str, column: &str, kind: &str) -> rusqlite::Result<()> {
+	let exists = c.prepare(&format!("SELECT 1 FROM pragma_table_info('{table}') WHERE name = ?"))?.exists([column])?;
+	if !exists {
+		c.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column} {kind}"))?;
+	}
+	Ok(())
 }
 
 #[derive(Debug, Clone)]

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api, fmtDur, fmtTime, PLATFORM_NAME, type Post, type Target } from '../api';
 import { Icon, PlatformMark } from '../ui';
-import { describe, TargetRow, toneColor, type Action } from './Results';
+import { describe, ScheduleActions, TargetRow, toneColor, type Action } from './Results';
 
 export function HistoryPage({ posts, refresh, go }: { posts: Post[] | null; refresh: () => void; go: (p: string) => void }) {
 	const [open, setOpen] = useState<string | null>(null);
@@ -9,7 +9,7 @@ export function HistoryPage({ posts, refresh, go }: { posts: Post[] | null; refr
 	const [error, setError] = useState<string | null>(null);
 
 	useEffect(() => {
-		if (!posts?.some((p) => !p.done)) return;
+		if (!posts?.some((p) => !p.done && !p.scheduled)) return;
 		const t = setInterval(refresh, 1500);
 		return () => clearInterval(t);
 	}, [posts]);
@@ -79,7 +79,7 @@ export function HistoryPage({ posts, refresh, go }: { posts: Post[] | null; refr
 									{failed.length > 0 && p.done && (
 										<button className="btn sm" disabled={retrying === p.id} onClick={(e) => (e.stopPropagation(), retry(p))}><Icon.retry /> Retry failed</button>
 									)}
-									<span className="when">{fmtTime(p.createdAt)}</span>
+									<span className="when">{p.scheduled && p.scheduledAt ? <><Icon.clock /> {fmtTime(p.scheduledAt)}</> : fmtTime(p.createdAt)}</span>
 								</div>
 							</div>
 							{expanded && (
@@ -94,6 +94,7 @@ export function HistoryPage({ posts, refresh, go }: { posts: Post[] | null; refr
 											)}
 										</div>
 									))}
+									{p.scheduled && <ScheduleActions post={p} onUpdate={() => refresh()} />}
 									{p.media.deleted ? <div className="hint" style={{ padding: '0 18px 12px' }}>The video file was cleaned up after the retention period. To post it again, create a new post and upload it.</div>
 											: <div className="row" style={{ padding: '0 18px 12px', justifyContent: 'flex-end' }}><button className="btn sm quiet" onClick={() => go('/')}>Create another post</button></div>}
 								</div>

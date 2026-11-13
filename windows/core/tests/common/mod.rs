@@ -141,7 +141,7 @@ pub fn new_target(app: &App, platform: Platform, demo: bool, caption: &str, sett
 	let m = seed_media(app, 3 * 1024 * 1024);
 	let a = seed_account(app, platform, demo);
 	let key = format!("k-{}", publisher_core::crypto::random_id(8));
-	let (post, _) = jobs::create_post(app, &key, &m, caption, demo, &[NewTarget { account_id: a.id.clone(), platform: platform.as_str().into(), settings }]).unwrap();
+	let (post, _) = jobs::create_post(app, &key, &m, caption, demo, &[NewTarget { account_id: a.id.clone(), platform: platform.as_str().into(), settings }], None).unwrap();
 	let target = jobs::post_view(app, &post).unwrap()["targets"][0]["id"].as_str().unwrap().to_string();
 	(post, target, a.id)
 }

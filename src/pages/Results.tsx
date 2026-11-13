@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { api, PLATFORM_NAME, type Post, type Target } from '../api';
+import { api, fmtTime, PLATFORM_NAME, type Post, type Target } from '../api';
 import { computer } from '../desktop';
 import { Icon, PlatformMark, Steps } from '../ui';
+import { toLocalInput } from './Create';
 
 type Tone = 'ok' | 'wait' | 'bad' | 'busy' | 'idle' | 'sim';
 export type Action = 'open' | 'check' | 'retry' | 'reconnect' | 'reupload' | null;
@@ -15,6 +16,7 @@ export function describe(t: Target, demo: boolean, mediaDeleted = false): Descri
 	const waitS = t.nextRunAt && t.nextRunAt > Date.now() ? Math.max(1, Math.round((t.nextRunAt - Date.now()) / 1000)) : 0;
 	switch (t.state) {
 		case 'queued':
+			if (t.scheduled && t.nextRunAt) return { label: 'Scheduled', tone: 'idle', explain: `Goes out ${fmtTime(t.nextRunAt)}. Publisher must be running then; it can stay in the notification area.`, action: null };
 			if (t.outcomeUnknown) return { label: 'Checking', tone: 'wait', explain: `Last attempt ended without a clear answer. Asking ${name} what happened before doing anything else${waitS ? ` (in ${waitS} s)` : ''}.`, action: null };
 			if (t.attempts > 0) return { label: 'Retrying', tone: 'wait', explain: `${t.error ?? 'Temporary problem'}. Trying again automatically${waitS ? ` in ${waitS} s` : ''}.`, action: null };
 			return { label: 'Queued', tone: 'idle', explain: 'Waiting for the background worker to pick this up.', action: null };
@@ -80,7 +82,7 @@ export function PublishStatus({ post, onUpdate, onNew, go }: { post: Post; onUpd
 	const ds = post.targets.map((t) => describe(t, post.isDemo, post.media.deleted));
 	const live = ds.filter((d) => d.tone === 'ok').length;
 	const needs = ds.filter((d) => d.tone === 'wait' && !['Checking', 'Retrying'].includes(d.label)).length;
-	const headline = !post.done ? 'Publishing' : post.isDemo ? 'Simulation finished' : failed.length ? 'Finished with problems' : needs ? 'Done, with a step left' : 'All published';
+	const headline = post.scheduled && post.scheduledAt ? `Scheduled for ${fmtTime(post.scheduledAt)}` : !post.done ? 'Publishing' : post.isDemo ? 'Simulation finished' : failed.length ? 'Finished with problems' : needs ? 'Done, with a step left' : 'All published';
 
 	async function act(a: Action, t?: Target) {
 		if (a === 'reconnect') return go('/accounts');
@@ -102,9 +104,10 @@ export function PublishStatus({ post, onUpdate, onNew, go }: { post: Post; onUpd
 				<span className="dot" style={{ background: !post.done ? 'var(--ember)' : failed.length ? 'var(--bad)' : needs ? 'var(--wait)' : 'var(--ok)', width: 8, height: 8 }} />
 				<b>{headline}</b>
 				{post.isDemo && <span className="chip demo">Simulated</span>}
-				<span className="faint grow ellipsis">{!post.done ? 'Keeps going with the window closed' : post.isDemo ? 'Nothing was actually posted' : `${live} of ${post.targets.length} confirmed live`}</span>
+				<span className="faint grow ellipsis">{post.scheduled ? 'Nothing is sent before then' : !post.done ? 'Keeps going with the window closed' : post.isDemo ? 'Nothing was actually posted' : `${live} of ${post.targets.length} confirmed live`}</span>
 			</div>
 			{post.targets.map((t) => <TargetRow key={t.id} t={t} demo={post.isDemo} mediaDeleted={post.media.deleted} busy={busy} onAction={act} />)}
+			{post.scheduled && <ScheduleActions post={post} onUpdate={onUpdate} />}
 			{error && <div className="err" role="alert" style={{ padding: '0 18px 10px' }}>{error}</div>}
 			{(post.done || !onNew) && (
 				<div className="results-foot">
@@ -115,7 +118,46 @@ export function PublishStatus({ post, onUpdate, onNew, go }: { post: Post; onUpd
 					{onNew && post.done && <button className="btn sm primary" onClick={onNew}>Create another post</button>}
 				</div>
 			)}
-			{!post.done && <div className="hint" style={{ padding: '0 18px 12px', marginTop: 0 }}>You can close this window. Jobs keep going while Publisher runs, pause while it is quit or the {computer} sleeps, and resume on the next launch.</div>}
+			{!post.done && !post.scheduled && <div className="hint" style={{ padding: '0 18px 12px', marginTop: 0 }}>You can close this window. Jobs keep going while Publisher runs, pause while it is quit or the {computer} sleeps, and resume on the next launch.</div>}
+		</div>
+	);
+}
+
+/** Publish now, move or cancel a post that is still waiting for its time. */
+export function ScheduleActions({ post, onUpdate }: { post: Post; onUpdate: (p: Post) => void }) {
+	const [busy, setBusy] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const [editing, setEditing] = useState(false);
+	const [when, setWhen] = useState(() => toLocalInput(post.scheduledAt ?? Date.now() + 3_600_000));
+	async function run(f: () => Promise<{ post: Post }>) {
+		setBusy(true);
+		setError(null);
+		try {
+			onUpdate((await f()).post);
+			setEditing(false);
+		} catch (e: any) {
+			setError(e.message);
+		} finally {
+			setBusy(false);
+		}
+	}
+	return (
+		<div className="results-foot" style={{ flexWrap: 'wrap' }}>
+			{editing ? (
+				<>
+					<input className="field mono" type="datetime-local" value={when} min={toLocalInput(Date.now() + 2 * 60_000)} onChange={(e) => setWhen(e.target.value)} aria-label="New time" style={{ maxWidth: 220 }} />
+					<button className="btn sm primary" disabled={busy} onClick={() => run(() => api.schedule(post.id, new Date(when).getTime()))}>Save time</button>
+					<button className="btn sm quiet" disabled={busy} onClick={() => setEditing(false)}>Keep the old time</button>
+				</>
+			) : (
+				<>
+					<button className="btn sm" disabled={busy} data-sfx="launch" onClick={() => run(() => api.schedule(post.id, null))}><Icon.play /> Publish now</button>
+					<button className="btn sm" disabled={busy} onClick={() => setEditing(true)}><Icon.clock /> Change time</button>
+					<span className="grow" />
+					<button className="btn sm quiet danger" disabled={busy} onClick={() => confirm('Cancel this scheduled post? Nothing has been sent yet. You can still retry it later.') && run(() => api.cancelSchedule(post.id))}>Cancel schedule</button>
+				</>
+			)}
+			{error && <div className="err" role="alert" style={{ width: '100%' }}>{error}</div>}
 		</div>
 	);
 }

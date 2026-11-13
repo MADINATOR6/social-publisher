@@ -26,20 +26,25 @@ fn post_by_key(app: &App, key: &str) -> Option<String> {
 	app.db().query_row("SELECT id FROM posts WHERE idempotency_key = ?", [key], |r| r.get(0)).optional().ok().flatten()
 }
 
-/** Creates a post once. Submitting the same idempotency key again returns the original post. */
-pub fn create_post(app: &App, idempotency_key: &str, media_id: &str, caption: &str, is_demo: bool, targets: &[NewTarget]) -> Result<(String, bool), String> {
+/// Creates a post once. Submitting the same idempotency key again returns the original post.
+/// With `scheduled_at`, every destination waits in the queue until that time.
+pub fn create_post(app: &App, idempotency_key: &str, media_id: &str, caption: &str, is_demo: bool, targets: &[NewTarget], scheduled_at: Option<i64>) -> Result<(String, bool), String> {
 	if let Some(id) = post_by_key(app, idempotency_key) {
 		return Ok((id, true));
 	}
 	let db = app.db();
 	let id = random_id(10);
 	let t = now_ms();
+	let due = scheduled_at.unwrap_or(t);
 	db.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
 	let run = || -> rusqlite::Result<()> {
-		db.execute("INSERT INTO posts (id, idempotency_key, media_id, caption, is_demo, created_at) VALUES (?, ?, ?, ?, ?, ?)", params![id, idempotency_key, media_id, caption, is_demo as i64, t])?;
+		db.execute(
+			"INSERT INTO posts (id, idempotency_key, media_id, caption, is_demo, created_at, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			params![id, idempotency_key, media_id, caption, is_demo as i64, t, scheduled_at],
+		)?;
 		let mut ins = db.prepare_cached("INSERT INTO targets (id, post_id, account_id, platform, settings, state, next_run_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?)")?;
 		for tg in targets {
-			ins.execute(params![random_id(10), id, tg.account_id, tg.platform, tg.settings.to_string(), t, t, t])?;
+			ins.execute(params![random_id(10), id, tg.account_id, tg.platform, tg.settings.to_string(), due, t, t])?;
 		}
 		Ok(())
 	};
@@ -293,6 +298,38 @@ pub fn retry_targets(app: &App, post_id: &str, target_ids: Option<&[String]>) ->
 	picked
 }
 
+/// Destinations that are still only waiting for their scheduled time: never started, nothing sent.
+const WAITING: &str = "state = 'queued' AND attempts = 0 AND uncertain = 0 AND provider_ref IS NULL AND remote_id IS NULL AND lease_owner IS NULL";
+
+/// Moves a scheduled post to another time, or to now when `at` is `None`. Only destinations that
+/// have not started are moved. Returns how many moved.
+pub fn reschedule(app: &App, post_id: &str, at: Option<i64>) -> usize {
+	let db = app.db();
+	let when = at.unwrap_or_else(now_ms);
+	let ids: Vec<String> = db.prepare(&format!("SELECT id FROM targets WHERE post_id = ? AND {WAITING}")).and_then(|mut st| st.query_map([post_id], |r| r.get(0)).map(|r| r.flatten().collect())).unwrap_or_default();
+	for id in &ids {
+		let _ = db.execute("UPDATE targets SET next_run_at = ?, updated_at = ? WHERE id = ?", params![when, now_ms(), id]);
+		add_event(app, id, &if at.is_some() { "Schedule changed.".to_string() } else { "Publishing now instead of at the scheduled time.".to_string() });
+	}
+	if !ids.is_empty() {
+		let _ = db.execute("UPDATE posts SET scheduled_at = ? WHERE id = ?", params![at, post_id]);
+	}
+	ids.len()
+}
+
+/// Cancels the destinations of a scheduled post that have not started. They end as failed with a
+/// clear reason, so "Retry" can still post them later.
+pub fn cancel_scheduled(app: &App, post_id: &str) -> usize {
+	let db = app.db();
+	let ids: Vec<String> =
+		db.prepare(&format!("SELECT id FROM targets WHERE post_id = ? AND next_run_at > ? AND {WAITING}")).and_then(|mut st| st.query_map(params![post_id, now_ms()], |r| r.get(0)).map(|r| r.flatten().collect())).unwrap_or_default();
+	for id in &ids {
+		finish(app, id, "failed", Finish { error: Some("Cancelled before the scheduled time. Retry posts it now."), ..Default::default() });
+		add_event(app, id, "Schedule cancelled.");
+	}
+	ids.len()
+}
+
 pub fn active_jobs(app: &App) -> i64 {
 	app.db().query_row(&format!("SELECT COUNT(*) FROM targets WHERE state IN {ACTIVE_STATES}"), [], |r| r.get(0)).unwrap_or(0)
 }
@@ -309,9 +346,11 @@ pub fn post_view(app: &App, post_id: &str) -> Option<Value> {
 		height: Option<i64>,
 		size: i64,
 		deleted: bool,
+		media_id: String,
+		scheduled_at: Option<i64>,
 	}
 	let post = db
-		.prepare_cached("SELECT p.caption, p.is_demo, p.created_at, m.filename, m.duration, m.width, m.height, m.size, m.deleted_at FROM posts p JOIN media m ON m.id = p.media_id WHERE p.id = ?")
+		.prepare_cached("SELECT p.caption, p.is_demo, p.created_at, m.filename, m.duration, m.width, m.height, m.size, m.deleted_at, m.id, p.scheduled_at FROM posts p JOIN media m ON m.id = p.media_id WHERE p.id = ?")
 		.ok()?
 		.query_row([post_id], |r| {
 			Ok(P {
@@ -324,6 +363,8 @@ pub fn post_view(app: &App, post_id: &str) -> Option<Value> {
 				height: r.get(6)?,
 				size: r.get(7)?,
 				deleted: r.get::<_, Option<i64>>(8)?.is_some(),
+				media_id: r.get(9)?,
+				scheduled_at: r.get(10)?,
 			})
 		})
 		.optional()
@@ -369,11 +410,15 @@ pub fn post_view(app: &App, post_id: &str) -> Option<Value> {
 	}
 
 	let done = targets.iter().all(|t| is_terminal(&t.row.state));
+	let now = now_ms();
+	let waiting = |r: &TargetRow| post.scheduled_at.is_some() && r.state == "queued" && r.attempts == 0 && !r.uncertain && r.provider_ref.is_none() && r.remote_id.is_none() && r.next_run_at > now;
+	let scheduled = targets.iter().any(|t| waiting(&t.row));
 	let target_views: Vec<Value> = targets
 		.iter()
 		.map(|t| {
 			let r = &t.row;
 			json!({
+				"scheduled": waiting(r),
 				"id": r.id,
 				"platform": r.platform.as_str(),
 				"account": { "name": t.name, "handle": t.handle, "avatarUrl": t.avatar, "isDemo": t.account_demo },
@@ -398,7 +443,9 @@ pub fn post_view(app: &App, post_id: &str) -> Option<Value> {
 		"caption": post.caption,
 		"isDemo": post.is_demo,
 		"createdAt": post.created_at,
-		"media": { "filename": post.filename, "duration": post.duration, "width": post.width, "height": post.height, "size": post.size, "deleted": post.deleted },
+		"media": { "id": post.media_id, "filename": post.filename, "duration": post.duration, "width": post.width, "height": post.height, "size": post.size, "deleted": post.deleted },
+		"scheduledAt": post.scheduled_at,
+		"scheduled": scheduled,
 		"targets": target_views,
 		"done": done,
 	}))
