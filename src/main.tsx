@@ -2,8 +2,23 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { api, type Account, type Config, type Post, type Status } from './api';
-import { computer, logsHint } from './desktop';
+import { computer, logsHint, onWindows } from './desktop';
 import { Icon } from './ui';
+import { enableSounds, sounds } from './sounds';
+
+// The Windows app clicks like Ethereal Enchantment. The Mac app stays silent.
+if (onWindows) enableSounds();
+
+function SoundToggle() {
+	const [, redraw] = useState(0);
+	useEffect(() => sounds.subscribe(() => redraw((n) => n + 1)), []);
+	if (!sounds.available) return null;
+	return (
+		<button className="ghost-link" data-sfx={sounds.on ? 'toggleOff' : 'none'} aria-pressed={sounds.on} title={sounds.on ? 'Sounds on (click to mute)' : 'Sounds off (click to turn on)'} onClick={() => sounds.set(!sounds.on)}>
+			{sounds.on ? <Icon.volume /> : <Icon.mute />} <span>{sounds.on ? 'Sounds on' : 'Sounds off'}</span>
+		</button>
+	);
+}
 import { CreatePage } from './pages/Create';
 import { HistoryPage } from './pages/History';
 import { AccountsPage } from './pages/Accounts';
@@ -115,6 +130,7 @@ function App() {
 					{config?.demoMode && <span className="chip demo hide-sm" style={{ justifySelf: 'start', marginLeft: 6 }}>Demo mode</span>}
 					{session.noSignIn && <span className="chip warn signin-off" title="Password protection is off (NO_SIGN_IN=true). Only this computer can open the app. Turn sign-in back on before sharing or tunnelling it.">Sign-in off · local only</span>}
 					<WorkerStatus status={status} inFlight={inFlight} desktop={Boolean(session.desktop)} />
+					<SoundToggle />
 					{!session.noSignIn && !session.desktop && <button className="ghost-link" aria-label="Sign out" onClick={async () => (await api.signOut(), location.reload())}><Icon.out /> <span>Sign out</span></button>}
 				</div>
 			</nav>

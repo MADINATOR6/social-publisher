@@ -431,7 +431,7 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 								)}
 								{hasDraft && <span className="draft-tag">Draft saved<button type="button" className="linkish" onClick={discard}>Discard draft</button></span>}
 							</div>
-							<button className="btn primary big" onClick={publish} disabled={busy || blocking > 0} aria-busy={busy} title={blocking ? 'Fix the items in the checklist first' : undefined}>
+							<button className="btn primary big" data-sfx="launch" onClick={publish} disabled={busy || blocking > 0} aria-busy={busy} title={blocking ? 'Fix the items in the checklist first' : undefined}>
 								<Icon.play /> {busy ? 'Starting…' : anyDemo ? 'Publish (simulated)' : 'Publish'}
 							</button>
 						</div>
