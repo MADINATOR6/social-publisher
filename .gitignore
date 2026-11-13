@@ -1,0 +1,29 @@
+# Dependencies and build output
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+coverage/
+
+# Secrets: local settings and keys (keep the example)
+.env
+.env.*
+!.env.example
+
+# Local data: database, uploaded videos, encrypted tokens and keys live here
+data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Video files anywhere in the tree
+*.mp4
+*.mov
+*.m4v
+*.webm
+
+# Logs and OS clutter
+*.log
+.DS_Store

@@ -1,0 +1,196 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import './styles.css';
+import { api, type Account, type Config, type Post, type Status } from './api';
+import { Icon } from './ui';
+import { CreatePage } from './pages/Create';
+import { HistoryPage } from './pages/History';
+import { AccountsPage } from './pages/Accounts';
+
+const PAGES = {
+	'/': { title: 'Create post', sub: 'One video, every platform.', icon: Icon.create },
+	'/history': { title: 'Post history', sub: 'Where every post stands.', icon: Icon.history },
+	'/accounts': { title: 'Connected accounts', sub: 'Official sign-in only. Your passwords never touch this app.', icon: Icon.accounts },
+} as const;
+type Path = keyof typeof PAGES;
+
+function App() {
+	const [path, setPath] = useState<Path>(() => (location.pathname in PAGES ? (location.pathname as Path) : '/'));
+	const [session, setSession] = useState<{ signedIn: boolean; demoMode: boolean; noSignIn?: boolean } | null>(null);
+	const [config, setConfig] = useState<Config | null>(null);
+	const [accounts, setAccounts] = useState<Account[]>([]);
+	const [posts, setPosts] = useState<Post[] | null>(null);
+	const [offline, setOffline] = useState(false);
+	const [status, setStatus] = useState<Status | null>(null);
+
+	const go = useCallback((p: string) => {
+		const next = (p in PAGES ? p : '/') as Path;
+		history.pushState(null, '', next);
+		setPath(next);
+	}, []);
+	useEffect(() => {
+		const on = () => setPath((location.pathname in PAGES ? location.pathname : '/') as Path);
+		addEventListener('popstate', on);
+		return () => removeEventListener('popstate', on);
+	}, []);
+
+	const load = useCallback(async () => {
+		const [c, a, p] = await Promise.all([api.config(), api.accounts(), api.posts()]);
+		setConfig(c);
+		setAccounts(a);
+		setPosts(p);
+	}, []);
+	const refreshPosts = useCallback(() => api.posts().then(setPosts).catch(() => undefined), []);
+	const refreshAccounts = useCallback(() => api.accounts().then(setAccounts).catch(() => undefined), []);
+
+	useEffect(() => {
+		api.session()
+			.then((s) => {
+				setSession(s);
+				if (s.signedIn) load().catch(() => setOffline(true));
+			})
+			.catch(() => setOffline(true));
+	}, []);
+
+	// Worker health comes from the worker's own heartbeat (it writes one every 10 s).
+	useEffect(() => {
+		if (!session?.signedIn) return;
+		const poll = () => api.status().then(setStatus).catch(() => setStatus(null));
+		poll();
+		const t = setInterval(poll, 10_000);
+		return () => clearInterval(t);
+	}, [session?.signedIn]);
+
+	if (offline)
+		return (
+			<div className="login">
+				<div className="panel pad" style={{ maxWidth: 380 }}>
+					<b>Can’t reach the Publisher server</b>
+					<p className="muted" style={{ margin: '6px 0 14px' }}>Start it with <span className="mono">npm run dev</span>, then reload this page.</p>
+					<button className="btn sm" onClick={() => location.reload()}>Reload</button>
+				</div>
+			</div>
+		);
+	if (!session) return null;
+	if (!session.signedIn) return <Login onDone={() => (setSession({ ...session, signedIn: true }), load())} />;
+
+	const page = PAGES[path];
+	const live = accounts.filter((a) => a.status !== 'disconnected');
+	const attention = (posts ?? []).filter((p) => p.targets.some((t) => t.state === 'failed' || t.state === 'needs_attention')).length;
+	const inFlight = (posts ?? []).filter((p) => !p.done).length;
+	const reconnect = live.filter((a) => a.status === 'reconnect_required').length;
+
+	return (
+		<div className="shell">
+			<nav className="rail" aria-label="Main">
+				<div className="brand">
+					<span className="brand-mark"><Icon.play /></span>
+					<div>
+						<b>Publisher</b>
+						<small>{live.length ? `${live.length} account${live.length === 1 ? '' : 's'}` : 'No accounts yet'}</small>
+					</div>
+				</div>
+				{(Object.keys(PAGES) as Path[]).map((p) => {
+					const P = PAGES[p];
+					const count = p === '/history' ? (inFlight || attention) : p === '/accounts' ? reconnect : 0;
+					return (
+						<a key={p} href={p} className={`nav ${path === p ? 'on' : ''}`} aria-current={path === p ? 'page' : undefined} onClick={(e) => (e.preventDefault(), go(p))}>
+							<P.icon />
+							<span className="label-long">{P.title}</span>
+							{count > 0 && <span className={`count ${(p === '/accounts' || (!inFlight && attention)) ? 'warn' : ''}`}>{count}</span>}
+						</a>
+					);
+				})}
+				<div className="rail-foot">
+					{config?.demoMode && <span className="chip demo hide-sm" style={{ justifySelf: 'start', marginLeft: 6 }}>Demo mode</span>}
+					{session.noSignIn && <span className="chip warn signin-off" title="Password protection is off (NO_SIGN_IN=true). Only this computer can open the app. Turn sign-in back on before sharing or tunnelling it.">Sign-in off · local only</span>}
+					<WorkerStatus status={status} inFlight={inFlight} />
+					{!session.noSignIn && <button className="ghost-link" aria-label="Sign out" onClick={async () => (await api.signOut(), location.reload())}><Icon.out /> <span>Sign out</span></button>}
+				</div>
+			</nav>
+			<main className="main">
+				<div className="page">
+					<header className="topbar">
+						<h1>{page.title}</h1>
+						<span className="sub hide-sm">{page.sub}</span>
+					</header>
+					{!config ? (
+						<div className="panel empty">Loading…</div>
+					) : path === '/' ? (
+						<CreatePage accounts={accounts} config={config} go={go} onPublished={() => (refreshPosts(), refreshAccounts())} />
+					) : path === '/history' ? (
+						<HistoryPage posts={posts} refresh={refreshPosts} go={go} />
+					) : (
+						<AccountsPage accounts={accounts} config={config} refresh={refreshAccounts} refreshConfig={() => api.config().then(setConfig).catch(() => undefined)} />
+					)}
+				</div>
+			</main>
+		</div>
+	);
+}
+
+function Login({ onDone }: { onDone: () => void }) {
+	const [pw, setPw] = useState('');
+	const [err, setErr] = useState<string | null>(null);
+	const [busy, setBusy] = useState(false);
+	return (
+		<div className="login">
+			<form
+				className="panel"
+				onSubmit={async (e) => {
+					e.preventDefault();
+					setBusy(true);
+					setErr(null);
+					try {
+						await api.signIn(pw);
+						onDone();
+					} catch (x: any) {
+						setErr(x.message);
+					} finally {
+						setBusy(false);
+					}
+				}}
+			>
+				<div className="brand" style={{ padding: '0 0 18px' }}>
+					<span className="brand-mark"><Icon.play /></span>
+					<div><b>Publisher</b><small>Sign in to continue</small></div>
+				</div>
+				<label className="f"><span>Password</span><input className={`field ${err ? 'bad' : ''}`} type="password" autoFocus value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" /></label>
+				{err && <div className="err" role="alert">{err}</div>}
+				<button className="btn primary" style={{ width: '100%', marginTop: 14 }} disabled={busy || !pw}>{busy ? 'Signing in…' : 'Sign in'}</button>
+			</form>
+		</div>
+	);
+}
+
+// Reuse one root across hot reloads in development.
+const host = document.getElementById('root')! as HTMLElement & { _root?: ReturnType<typeof createRoot> };
+host._root ??= createRoot(host);
+host._root.render(<App />);
+
+function ago(ms: number) {
+	const s = Math.max(0, Math.round(ms / 1000));
+	return s < 60 ? `${s} s` : s < 3600 ? `${Math.round(s / 60)} min` : `${Math.round(s / 3600)} h`;
+}
+
+/** Shows whether the background worker has checked in recently, not merely whether the web server answers. */
+function WorkerStatus({ status, inFlight }: { status: Status | null; inFlight: number }) {
+	const w = status?.worker;
+	const state = !status ? 'unknown' : w!.state;
+	const since = w?.lastSeenAt && status ? ago(status.now - w.lastSeenAt) : null;
+	const label = state === 'running' ? (inFlight ? `${inFlight} publishing` : 'Worker running') : state === 'stale' ? 'Worker not responding' : state === 'never' ? 'Worker not started' : 'Status unknown';
+	const tip =
+		state === 'running'
+			? `Background worker checked in ${since} ago. Jobs keep going with this tab closed, as long as this computer and the app stay running.`
+			: state === 'stale'
+				? `The background worker last checked in ${since} ago. Queued posts will wait until it runs again (restart the app with npm run dev).`
+				: state === 'never'
+					? 'The background worker has never checked in. Start the app with npm run dev; posts wait until it runs.'
+					: 'Could not read the worker status.';
+	return (
+		<div className={`live ${state === 'running' ? (inFlight ? 'busy' : '') : 'down'}`} title={tip} role="status" aria-label={`${label}. ${tip}`}>
+			<span className="dot" />
+			<span className="lbl">{label}</span>
+		</div>
+	);
+}
