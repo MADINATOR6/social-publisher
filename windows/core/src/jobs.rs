@@ -467,6 +467,7 @@ pub fn post_view(app: &App, post_id: &str) -> Option<Value> {
 				"accountStatus": t.account_status,
 				"nextRunAt": if r.state == "queued" { Value::from(r.next_run_at) } else { Value::Null },
 				"canMarkPosted": can_mark_posted(r),
+				"accountId": r.account_id,
 				"error": r.error,
 				"permalink": if post.is_demo { None } else { r.permalink.clone() },
 				"updatedAt": r.updated_at,

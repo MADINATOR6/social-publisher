@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { api, fmtDur, fmtTime, PLATFORM_NAME, type Post, type Target } from '../api';
 import { Icon, PlatformMark } from '../ui';
+import { queueRepost } from '../draft';
 import { askLink, describe, ScheduleActions, TargetRow, toneColor, type Action } from './Results';
 
-export function HistoryPage({ posts, refresh, go }: { posts: Post[] | null; refresh: () => void; go: (p: string) => void }) {
+export function HistoryPage({ posts, refresh, go, canRepost = false }: { posts: Post[] | null; refresh: () => void; go: (p: string) => void; canRepost?: boolean }) {
 	const [open, setOpen] = useState<string | null>(null);
 	const [retrying, setRetrying] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -109,6 +110,11 @@ export function HistoryPage({ posts, refresh, go }: { posts: Post[] | null; refr
 									{p.scheduled && <ScheduleActions post={p} onUpdate={() => refresh()} />}
 									{p.media.deleted ? <div className="hint" style={{ padding: '0 18px 12px' }}>The video file was cleaned up after the retention period. To post it again, create a new post and upload it.</div>
 											: <div className="row" style={{ padding: '0 18px 12px', justifyContent: 'flex-end' }}><button className="btn sm quiet" onClick={() => go('/')}>Create another post</button></div>}
+										{canRepost && p.done && (
+											<div className="row" style={{ padding: '0 18px 12px', justifyContent: 'flex-end', marginTop: p.media.deleted ? 0 : -6 }}>
+												<button className="btn sm" onClick={() => (queueRepost(p.id), go('/'))} title="Open this post in Create post with the same caption, settings and video"><Icon.repost /> Post again</button>
+											</div>
+										)}
 								</div>
 							)}
 						</div>

@@ -32,7 +32,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 const DESKTOP_COOKIE: &str = "sp_desktop";
 /// What this backend can do beyond the original contract. The shared UI shows a feature only when it
 /// is listed here, so the Mac app (whose server sends none) keeps its screens unchanged.
-const FEATURES: &[&str] = &["schedule", "notifications", "markPosted"];
+const FEATURES: &[&str] = &["schedule", "notifications", "markPosted", "repost"];
 const SIGN_IN_HOSTS: [&str; 4] = ["accounts.google.com", "www.instagram.com", "api.instagram.com", "www.tiktok.com"];
 
 #[derive(rust_embed::RustEmbed)]

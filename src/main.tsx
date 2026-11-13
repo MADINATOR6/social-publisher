@@ -158,7 +158,7 @@ function App() {
 					) : path === '/' ? (
 						<CreatePage accounts={accounts} config={config} go={go} onPublished={() => (refreshPosts(), refreshAccounts())} />
 					) : path === '/history' ? (
-						<HistoryPage posts={posts} refresh={refreshPosts} go={go} />
+						<HistoryPage posts={posts} refresh={refreshPosts} go={go} canRepost={has(config, 'repost')} />
 					) : (
 						<AccountsPage accounts={accounts} config={config} refresh={refreshAccounts} refreshConfig={() => api.config().then(setConfig).catch(() => undefined)} />
 					)}

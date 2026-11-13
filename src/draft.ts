@@ -43,3 +43,20 @@ export function clearDraft() {
 		localStorage.removeItem(KEY);
 	} catch {}
 }
+
+// "Post again" from Post history: the composer picks this up once, then forgets it.
+const REPOST = 'sp.repost';
+export function queueRepost(postId: string) {
+	try {
+		sessionStorage.setItem(REPOST, postId);
+	} catch {}
+}
+export function takeRepost(): string | null {
+	try {
+		const id = sessionStorage.getItem(REPOST);
+		sessionStorage.removeItem(REPOST);
+		return id;
+	} catch {
+		return null;
+	}
+}

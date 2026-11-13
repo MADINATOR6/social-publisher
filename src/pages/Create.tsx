@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api, ApiError, fmtBytes, fmtDur, has, PLATFORM_NAME, uploadVideo, type Account, type Config, type Issue, type Media, type Platform, type Post, type Verify } from '../api';
 import { Avatar, FieldError, Icon, PlatformMark, Seg, Toggle } from '../ui';
-import { clearDraft, loadDraft, saveDraft } from '../draft';
+import { clearDraft, loadDraft, saveDraft, takeRepost } from '../draft';
 import { issuesFor, Readiness, TIKTOK_INBOX_LABEL } from './Readiness';
 import { PublishStatus } from './Results';
 import { desktop } from '../desktop';
@@ -60,8 +60,53 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 
 	useEffect(() => () => void revoke(preview), [preview]);
 
+	// "Post again" from Post history: copy that post into the form. Nothing is submitted.
+	function repost(p: Post) {
+		const ok = new Set(usable.map((a) => a.id));
+		const picked = p.targets.filter((t) => t.accountId && ok.has(t.accountId));
+		const form: Record<string, Settings> = {};
+		for (const t of picked) {
+			const s = t.settings ?? {};
+			const own = String(s.captionOverride ?? '');
+			if (t.platform === 'tiktok') form[t.accountId!] = { ...defaults('tiktok', p.media.filename), overrideOn: Boolean(own.trim()), captionOverride: own, mode: s.mode ?? 'inbox', privacy: s.privacy ?? 'SELF_ONLY', allowComments: s.allowComments ?? true, allowDuet: s.allowDuet ?? false, allowStitch: s.allowStitch ?? false };
+			else if (t.platform === 'instagram') form[t.accountId!] = { ...defaults('instagram', p.media.filename), overrideOn: Boolean(own.trim()), captionOverride: own, shareToFeed: s.shareToFeed !== false, thumbSec: s.thumbOffsetMs == null ? '' : String(Number(s.thumbOffsetMs) / 1000) };
+			else form[t.accountId!] = { ...defaults('youtube', p.media.filename), title: String(s.title ?? ''), titleTouched: true, description: s.description && s.description !== p.caption ? String(s.description) : '', privacy: s.privacy ?? '', madeForKids: typeof s.madeForKids === 'boolean' ? s.madeForKids : null, categoryId: String(s.categoryId ?? '22') };
+		}
+		setCaption(p.caption);
+		setSelected(picked.map((t) => t.accountId!));
+		setSettings(form);
+		setTab(picked[0]?.accountId ?? null);
+		if (picked[0]) setPreviewAs(picked[0].platform);
+		setKey(newKey());
+		const when = new Date(p.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+		const missing = p.targets.length - picked.length;
+		const left = missing ? ` ${missing} destination${missing > 1 ? 's are' : ' is'} no longer connected, so ${missing > 1 ? 'they were' : 'it was'} left out.` : '';
+		if (!p.media.id || p.media.deleted) {
+			setUpload({ progress: 0, status: 'idle' });
+			return setNotice({ tone: 'warn', text: `Copied your post from ${when}. Its video was cleaned up after the retention period, so add the video again.${left}` });
+		}
+		setUpload({ progress: 0, status: 'restoring' });
+		api
+			.media(p.media.id)
+			.then((m) => {
+				setUpload({ progress: 1, status: 'done', media: m });
+				setPreview(m.previewUrl ?? null);
+				setNotice({ tone: 'info', text: `Copied your post from ${when}, with the same video. Change anything you like, then publish.${left}` });
+			})
+			.catch(() => {
+				setUpload({ progress: 0, status: 'idle' });
+				setNotice({ tone: 'warn', text: `Copied your post from ${when}. Its video is no longer on this computer, so add it again.${left}` });
+			});
+	}
+
 	// Restore a saved draft once. It only fills the form: nothing is submitted.
 	useEffect(() => {
+		const again = takeRepost();
+		if (again) {
+			hydrated.current = true;
+			api.post(again).then(repost).catch(() => setNotice({ tone: 'warn', text: 'That post could not be loaded.' }));
+			return;
+		}
 		const d = loadDraft();
 		hydrated.current = true;
 		if (!d) return;
