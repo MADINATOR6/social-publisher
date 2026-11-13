@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { api, PLATFORM_NAME, type Post, type Target } from '../api';
+import { computer } from '../desktop';
 import { Icon, PlatformMark, Steps } from '../ui';
 
 type Tone = 'ok' | 'wait' | 'bad' | 'busy' | 'idle' | 'sim';
@@ -114,7 +115,7 @@ export function PublishStatus({ post, onUpdate, onNew, go }: { post: Post; onUpd
 					{onNew && post.done && <button className="btn sm primary" onClick={onNew}>Create another post</button>}
 				</div>
 			)}
-			{!post.done && <div className="hint" style={{ padding: '0 18px 12px', marginTop: 0 }}>You can close this window. Jobs keep going while Publisher runs, pause while it is quit or the Mac sleeps, and resume on the next launch.</div>}
+			{!post.done && <div className="hint" style={{ padding: '0 18px 12px', marginTop: 0 }}>You can close this window. Jobs keep going while Publisher runs, pause while it is quit or the {computer} sleeps, and resume on the next launch.</div>}
 		</div>
 	);
 }

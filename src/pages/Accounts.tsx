@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { desktop, openSignIn } from '../desktop';
+import { computer, desktop, openSignIn } from '../desktop';
 import { api, ApiError, fmtTime, PLATFORM_NAME, type Account, type Config, type Issue, type Platform, type Setup } from '../api';
 import { Avatar, FieldError, Icon, PlatformMark } from '../ui';
 
@@ -17,7 +17,7 @@ const GUIDE: Record<Platform, { where: string; steps: (s: Setup['platforms'][Pla
 				: { text: <>Create a client of type <b>Web application</b> and add the address below as an <b>Authorized redirect URI</b>.</>, link: ['Create the client', 'https://console.cloud.google.com/auth/clients/create'] },
 			{ text: 'Paste the Client ID and Client secret here.' },
 		],
-		note: `While the consent screen is in Testing, Google asks you to reconnect every 7 days. Click "Publish app" under Audience to stop that. Verification is not needed for your own use.${desktop ? ' Google treats a Desktop app client secret as not confidential; it is stored encrypted on this Mac, but keep the client for your own use only.' : ''}`,
+		note: `While the consent screen is in Testing, Google asks you to reconnect every 7 days. Click "Publish app" under Audience to stop that. Verification is not needed for your own use.${desktop ? ` Google treats a Desktop app client secret as not confidential; it is stored encrypted on this ${computer}, but keep the client for your own use only.` : ''}`,
 	},
 	instagram: {
 		where: 'Meta for Developers',

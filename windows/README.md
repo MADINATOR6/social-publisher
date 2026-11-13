@@ -1,0 +1,64 @@
+# Publisher for Windows (Rust)
+
+A Windows build of Publisher, written in Rust. It shows the same React interface as the Mac app and keeps the same database, token format and HTTP contract, so the two behave alike. The Mac app (`desktop/`, `server/`, Electron) is not touched by anything in this folder.
+
+## Build and run
+Requirements: Windows 10 or 11 (x64), Node 22.13 or later, Rust (stable, MSVC toolchain) and the Microsoft C++ Build Tools. The Microsoft Edge WebView2 Runtime is part of Windows 11.
+
+```
+npm install
+npm run windows:test     # 34 Rust tests, all against a local stand-in for the platform APIs
+npm run windows:build    # builds the UI, then windows\target\release\Publisher.exe
+npm run windows:run
+```
+
+On first launch choose **Start Fresh** (or start it with `--start-fresh` to skip the question). Demo mode is on, with simulated accounts that never post. `--import-from=<folder>` imports an older project folder, as on the Mac.
+
+`Publisher.exe` is a single file with the interface built in. It can be copied anywhere and needs no Node, no ffprobe and no installer.
+
+## How it is put together
+| Part | Mac app | Windows app |
+|---|---|---|
+| Shell | Electron 45 (bundles Chromium and Node) | Tauri 2 on the WebView2 that Windows already has |
+| API and worker | Fastify and a worker, in two Node child processes | axum and tokio tasks, inside the one app process |
+| Store | `node:sqlite` | rusqlite with SQLite built in (same schema, WAL) |
+| Platform calls | Node `fetch` | reqwest over the Windows TLS stack |
+| Video facts | bundled `ffprobe` (one process per file) | a built-in MP4/MOV and WebM reader (`core/src/probe.rs`) |
+| Key protection | macOS Keychain via Electron `safeStorage` | Windows DPAPI, tied to the signed-in Windows user |
+| Data folder | `~/Library/Application Support/Publisher` | `%APPDATA%\Publisher` (same layout) |
+| Stays running | window hides, Dock reopens, Cmd+Q asks | window hides to the notification area, tray icon reopens, tray **Quit Publisher** asks |
+
+- `core/` is the backend as a library: `server.rs` (API and built UI), `jobs.rs` (queue), `runner.rs` (worker), `platforms/` (YouTube, Instagram, TikTok, demo), `keys.rs` (DPAPI and import), `probe.rs` (video reader). It has no dependency on the window toolkit, so its tests run headless.
+- `app/` is the desktop shell: window, tray icon, dialogs, single-instance lock, startup and quit.
+
+The interface reaches native features through the same `window.publisher` bridge the Mac preload provides (`pickVideo`, `openExternal`, `revealLogs`, `services`). Here it is a small script that calls the local server, which keeps the window free of any native IPC surface.
+
+## Security, same rules as the Mac app
+- The server listens on `127.0.0.1` only. Every `/api/*` call needs a per-launch cookie that only the app's window holds (HttpOnly, SameSite=Strict), plus the app's own header for anything that changes state. Password sign-in is disabled.
+- The window collects its cookie through a one-use link at startup. The key is random, works once and is never logged.
+- `keys.json` holds the two keys encrypted with DPAPI. If the database exists without it, the app refuses to start rather than create a replacement key.
+- Tokens and platform keys are encrypted with AES-256-GCM in the same `v1.iv.tag.data` format as the Node server, so a database opens in either version with its key.
+- The window only shows the app. Any other link opens in the default browser, and sign-in links are limited to the platforms' own hosts.
+- Logs (`%APPDATA%\Publisher\logs\main.log`) have keys, tokens and codes removed, and rotate at 5 MB.
+
+## What is faster or lighter than the Electron design
+Measured on the development PC (Windows 11, release build):
+- **Size:** one 15 MB executable. No bundled Chromium, Node or ffprobe.
+- **Memory:** about 33 MB for the app process itself (the WebView2 processes are Windows' own, shared runtime).
+- **Start:** the API and worker are ready about 20 ms after launch, before the window has finished opening.
+- **Video facts:** read in about 0.05 ms per file, by parsing only the container's index. Nothing is spawned.
+- **Choosing a video:** the native picker copies the file on disk in 4 MB blocks instead of sending it through a local HTTP request.
+- **Publishing:** a new post wakes the worker at once instead of waiting for its next poll, and a free slot is refilled as soon as one destination finishes instead of waiting for the whole batch of three.
+- **After a crash:** interrupted jobs resume as soon as the app starts (only one copy can run, so old leases are known to be dead) instead of after the 60-second lease runs out. They are still flagged to check with the platform first.
+
+## Checked
+- `npm run windows:test`: 34 of 34 pass. They cover the reconcile safety rules ported from `tests/reconcile.test.ts`, the queue, the API lock-down, upload and demo publishing, key storage, and opening a value encrypted by the Node server.
+- Release build driven through its real window (WebView2 debugging port): bridge present, cookie not readable by the page, demo accounts added, a real MP4 uploaded through the page and previewed, a demo post published to all three destinations, history kept across launches.
+- Force-kill mid-publish, then relaunch: all three interrupted jobs resumed and finished.
+- A second launch does not start a second copy. With the key file missing and the database present, the app refuses to start and creates no key.
+
+## Not checked yet
+- The native file picker, the tray menu, the close-to-tray notice and the quit question were not exercised by automation. They need a person to click through them once.
+- No real platform publish has been run, on either system. Sign-in and uploads to YouTube, Instagram and TikTok are tested only against a local stand-in.
+- No installer or code signing. Windows SmartScreen may warn about an unsigned `Publisher.exe` that was downloaded from elsewhere.
+- Videos recorded sideways with a rotation flag are read by their stored size, as `ffprobe` 4.4 does on the Mac.

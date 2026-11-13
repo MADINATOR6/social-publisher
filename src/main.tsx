@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { api, type Account, type Config, type Post, type Status } from './api';
+import { computer, logsHint } from './desktop';
 import { Icon } from './ui';
 import { CreatePage } from './pages/Create';
 import { HistoryPage } from './pages/History';
@@ -191,10 +192,10 @@ function WorkerStatus({ status, inFlight, desktop }: { status: Status | null; in
 	const tip =
 		state === 'running'
 			? desktop
-				? `Backend and worker are running (worker checked in ${since} ago). Jobs continue with the window closed, but stop while Publisher is quit or the Mac is asleep; they resume on next launch.`
+				? `Backend and worker are running (worker checked in ${since} ago). Jobs continue with the window closed, but stop while Publisher is quit or the ${computer} is asleep; they resume on next launch.`
 				: `Background worker checked in ${since} ago. Jobs keep going with this tab closed, as long as this computer and the app stay running.`
 			: state === 'stale'
-				? `The background worker last checked in ${since} ago. Queued posts wait until it runs again. ${desktop ? 'Publisher restarts it automatically; if this persists, quit and reopen the app (Help → Reveal Logs in Finder).' : 'Restart the app with npm run dev.'}`
+				? `The background worker last checked in ${since} ago. Queued posts wait until it runs again. ${desktop ? `Publisher restarts it automatically; if this persists, quit and reopen the app (${logsHint}).` : 'Restart the app with npm run dev.'}`
 				: state === 'never'
 					? `The background worker has never checked in. ${desktop ? 'Quit and reopen Publisher.' : 'Start the app with npm run dev.'} Posts wait until it runs.`
 					: `The backend is not responding, so worker status is unknown.${desktop ? ' Publisher restarts it automatically.' : ''}`;
