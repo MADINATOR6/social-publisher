@@ -1,10 +1,10 @@
 # Handoff
 
 **Updated:** 2026-11-14 01:35 PST
-**Source (permanent):** `/Users/arnidokarlosantinos./Projects/social-publisher`. An older copy remains in Claude's temporary session folder and is deleted with that session.
-**Packaged app:** `/Users/arnidokarlosantinos./Projects/social-publisher/release/mac-arm64/Publisher.app` (DMG: `release/Publisher-1.0.0-arm64.dmg`)
+**Source:** this repository (owner's copy at `~/Projects/social-publisher`).
+**Packaged app:** `~/Projects/social-publisher/release/mac-arm64/Publisher.app` (DMG: `release/Publisher-1.0.0-arm64.dmg`)
 **App data:** `~/Library/Application Support/Publisher/` (database, videos, settings, Keychain-protected `keys.json`, logs)
-**Git:** local commits only, no remote.
+**Git:** private GitHub repository `social-publisher`.
 
 ## Objective
 A private Mac app that publishes one video to the owner's YouTube, Instagram Reels and TikTok, with reliable background jobs.
