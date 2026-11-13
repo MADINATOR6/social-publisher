@@ -169,7 +169,7 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 				const info = config.platforms[a.platform];
 				if (!info.configured) out.push({ field: `account.${a.id}`, message: `Add ${PLATFORM_NAME[a.platform]} app keys in Connected accounts.` });
 				else if (!info.available) out.push({ field: `account.${a.id}`, message: info.note });
-				if (a.platform === 'instagram' && !config.publicBaseUrl) out.push({ field: `account.${a.id}`, message: 'Set a public HTTPS address in Connected accounts so Instagram can download the video.' });
+				if (a.platform === 'instagram' && !config.publicBaseUrl && !config.videoHosting) out.push({ field: `account.${a.id}`, message: 'Set a public HTTPS address in Connected accounts so Instagram can download the video.' });
 			}
 			if (a.platform === 'youtube') {
 				if (!String(s.title ?? '').trim()) out.push({ field: 'youtube.title', message: 'Add a title.' });

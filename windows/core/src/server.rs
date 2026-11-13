@@ -174,7 +174,8 @@ async fn config(State(app): S) -> Response {
 			(p.as_str().to_string(), json!({ "configured": relay::ready(&app, *p), "hosted": relay::hosted(&app, *p), "available": av.available, "mode": av.mode, "note": av.note, "limits": media::limits_json(*p) }))
 		})
 		.collect();
-	ok(json!({ "demoMode": app.cfg.demo_mode, "publicBaseUrl": !settings::public_base_url(&app).is_empty(), "platforms": platforms }))
+	let video_hosting = relay::base(&app).is_some() && app.endpoints.relay_platforms.contains(&Platform::Instagram);
+	ok(json!({ "demoMode": app.cfg.demo_mode, "publicBaseUrl": !settings::public_base_url(&app).is_empty(), "videoHosting": video_hosting, "platforms": platforms }))
 }
 
 // ---------- platform app keys (entered in the app) ----------
