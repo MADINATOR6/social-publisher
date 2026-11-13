@@ -162,7 +162,7 @@ function start(url: URL, env: Env, p: Platform): Response {
 			client_id: env.GOOGLE_CLIENT_ID!,
 			redirect_uri: back,
 			response_type: 'code',
-			scope: 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly',
+			scope: 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/yt-analytics.readonly',
 			access_type: 'offline',
 			prompt: 'consent',
 			include_granted_scopes: 'true',
@@ -171,10 +171,10 @@ function start(url: URL, env: Env, p: Platform): Response {
 		if (challenge) q.set('code_challenge', challenge), q.set('code_challenge_method', 'S256');
 		to = `https://accounts.google.com/o/oauth2/v2/auth?${q}`;
 	} else if (p === 'tiktok') {
-		const q = new URLSearchParams({ client_key: env.TIKTOK_CLIENT_KEY!, scope: 'user.info.basic,video.upload', response_type: 'code', redirect_uri: back, state: s });
+		const q = new URLSearchParams({ client_key: env.TIKTOK_CLIENT_KEY!, scope: 'user.info.basic,user.info.stats,video.list,video.upload', response_type: 'code', redirect_uri: back, state: s });
 		to = `https://www.tiktok.com/v2/auth/authorize/?${q}`;
 	} else {
-		const q = new URLSearchParams({ client_id: env.INSTAGRAM_APP_ID!, redirect_uri: back, response_type: 'code', scope: 'instagram_business_basic,instagram_business_content_publish', state: s });
+		const q = new URLSearchParams({ client_id: env.INSTAGRAM_APP_ID!, redirect_uri: back, response_type: 'code', scope: 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights', state: s });
 		to = `https://www.instagram.com/oauth/authorize?${q}`;
 	}
 	return redirect(to);

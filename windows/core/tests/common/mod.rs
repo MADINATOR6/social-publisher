@@ -76,6 +76,7 @@ impl Mock {
 			google_revoke: format!("{}/google/revoke", self.base),
 			youtube_api: format!("{}/youtube", self.base),
 			youtube_upload: format!("{}/youtube-upload", self.base),
+			youtube_analytics: format!("{}/yt-analytics", self.base),
 			instagram_graph: format!("{}/ig", self.base),
 			instagram_api: format!("{}/ig-api", self.base),
 			tiktok_api: format!("{}/tiktok", self.base),

@@ -20,6 +20,28 @@ export type Setup = {
 	platforms: Record<Platform, { configured: boolean; source: 'app' | 'env' | null; idPreview: string | null; hasSecret: boolean; redirectUri: string; idLabel: string; secretLabel: string }>;
 };
 
+/** One account's stats for a period (Windows build). Totals a platform does not report are absent. */
+export type Stats = {
+	accountId: string;
+	platform: Platform;
+	name: string;
+	handle: string | null;
+	avatarUrl: string | null;
+	isDemo: boolean;
+	days: number;
+	status: 'ok' | 'reconnect' | 'error';
+	message: string | null;
+	followers: number | null;
+	totals: Record<string, number>;
+	daily: ({ date: string } & Record<string, number | string>)[];
+	countries: { code: string; value: number; share: number }[];
+	countriesOf: 'views' | 'followers';
+	ages: { age: string; female: number; male: number; other: number }[];
+	top: { id: string; title: string; thumbnail: string | null; permalink: string | null; publishedAt: string | number | null; views: number | null; likes: number | null; comments: number | null; shares: number | null }[];
+	notes: string[];
+};
+export type StatsReport = { days: number; generatedAt: number; accounts: Stats[] };
+
 export class ApiError extends Error {
 	constructor(message: string, readonly status: number, readonly issues: Issue[] = []) {
 		super(message);
@@ -68,6 +90,7 @@ export const api = {
 		if (!res.ok) throw new ApiError(data.error ?? `Upload failed (${res.status})`, res.status);
 		return data as { id: string; mime: string; size: number; width: number | null; height: number | null; url: string };
 	},
+	analytics: (days: number, fresh = false) => call<StatsReport>('GET', `/api/analytics?days=${days}${fresh ? '&fresh=1' : ''}`),
 	prefs: () => call<{ notifications: boolean }>('GET', '/api/desktop/prefs'),
 	setPrefs: (p: { notifications: boolean }) => call<{ notifications: boolean }>('PUT', '/api/desktop/prefs', p),
 	cancelSchedule: (id: string) => call<{ post: Post }>('POST', `/api/posts/${id}/cancel`, {}),

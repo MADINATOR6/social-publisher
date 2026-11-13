@@ -112,10 +112,10 @@ describe('sign-in', () => {
 		expect(res.headers.get('location')).not.toContain('secret');
 	});
 
-	it('asks TikTok only for user.info.basic and video.upload', async () => {
+	it('asks TikTok for the profile, stats, video list and inbox upload scopes, never video.publish', async () => {
 		const to = new URL((await call(env(), `/start/tiktok?port=51234&state=${STATE}`)).headers.get('location')!);
 		expect(to.host).toBe('www.tiktok.com');
-		expect(to.searchParams.get('scope')).toBe('user.info.basic,video.upload');
+		expect(to.searchParams.get('scope')).toBe('user.info.basic,user.info.stats,video.list,video.upload');
 		expect(to.searchParams.get('client_key')).toBe('tt-key');
 	});
 

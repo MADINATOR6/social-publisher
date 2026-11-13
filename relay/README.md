@@ -61,8 +61,8 @@ Do these first, on every platform:
 3. Add your own social accounts as test users, so you can record the demo videos before approval.
 
 ### TikTok (developers.tiktok.com → your app → App review)
-- **Products:** Login Kit and Content Posting API.
-- **Scopes:** `user.info.basic` and `video.upload`.
+- **Products:** Login Kit, Content Posting API and Display API.
+- **Scopes:** `user.info.basic`, `user.info.stats`, `video.list` and `video.upload`.
 - **Platforms:** tick **Desktop**. Under Login Kit, add the redirect URI `https://<relay>/callback/tiktok`.
 - **Terms of Service URL:** `https://<relay>/terms`. **Privacy Policy URL:** `https://<relay>/privacy`.
 - **Description** (120 characters max):
@@ -73,6 +73,8 @@ Do these first, on every platform:
   > Login Kit / user.info.basic: the creator signs in through TikTok's official login page in their browser. The app reads open_id, display name and avatar only to show which account is connected. It never sees the password.
   >
   > Content Posting API / video.upload: when the creator clicks Publish, the app uploads the video file in chunks (FILE_UPLOAD) through /v2/post/publish/inbox/video/init/, then checks /v2/post/publish/status/fetch/ until TikTok reports SEND_TO_USER_INBOX. The video arrives as a draft in the creator's TikTok inbox, and they finish the caption and post it in the TikTok app. The app never posts directly and does not request video.publish.
+  >
+  > Login Kit / user.info.stats and Display API / video.list: the app's Stats page shows the creator their own follower count and total likes, and the views, likes, comments and shares of their recent videos. Nothing is shared with anyone else.
   >
   > Tokens are stored encrypted on the creator's computer.
 - **Demo video:** record the screen with OBS or Win+Alt+R and save it as an MP4 under 50 MB. Use the **Sandbox** of the app with your own TikTok account added as a target user. Show, in one take:
@@ -87,8 +89,8 @@ Do these first, on every platform:
 - **APIs:** enable YouTube Data API v3.
 - **OAuth client:** type **Web application**, with the redirect URI `https://<relay>/callback/youtube`.
 - **OAuth consent screen:** add the app name, logo, home page `https://<relay>/` and privacy policy `https://<relay>/privacy`. Both pages must be on a domain you verified in Google Search Console, so use the relay's custom domain.
-- **Scopes:** `youtube.upload` and `youtube.readonly`.
-- **Verification:** under Audience, click **Publish app**, then submit for verification. Google asks for a demo video showing the consent screen and the upload, and a short reason for each scope: "upload the user's own videos to their channel" and "show which channel is connected and the upload's processing status".
+- **Scopes:** `youtube.upload`, `youtube.readonly` and `yt-analytics.readonly`. Enable the YouTube Analytics API too.
+- **Verification:** under Audience, click **Publish app**, then submit for verification. Google asks for a demo video showing the consent screen and the upload, and a short reason for each scope: "upload the user's own videos to their channel" and "show which channel is connected and the upload's processing status" and "show the channel owner their own views, likes and audience countries on the Stats page".
 - **Quota:** in the YouTube API Services form, ask for more `videos.insert` quota. The default is 100 uploads a day, shared by all customers.
 
 ### Meta (developers.facebook.com)
@@ -96,7 +98,7 @@ Do these first, on every platform:
 - **Business login settings:** add the redirect URI `https://<relay>/callback/instagram`.
 - **Settings → Basic:** add the privacy policy and terms URLs, an app icon, and a category.
 - **Business verification:** complete it under Business Settings → Security Center. App Review needs it.
-- **App Review:** request **Advanced Access** for `instagram_business_basic` and `instagram_business_content_publish`.
+- **App Review:** request **Advanced Access** for `instagram_business_basic`, `instagram_business_content_publish` and `instagram_business_manage_insights` (the Stats page: the account's own views, likes, shares and follower countries).
   - Explain that the app publishes Reels the user chose to the user's own Professional account, and reads the account name and picture to show which account is connected.
   - Record a demo with an Instagram tester account. Show Connect, the Instagram login, choosing a video, Publish, and the Reel live on the profile.
 - **Customers:** they need a Professional (Business or Creator) Instagram account. Switching is free in the Instagram app's settings.

@@ -32,7 +32,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 const DESKTOP_COOKIE: &str = "sp_desktop";
 /// What this backend can do beyond the original contract. The shared UI shows a feature only when it
 /// is listed here, so the Mac app (whose server sends none) keeps its screens unchanged.
-const FEATURES: &[&str] = &["schedule", "notifications", "markPosted", "repost", "covers"];
+const FEATURES: &[&str] = &["schedule", "notifications", "markPosted", "repost", "covers", "analytics"];
 const SIGN_IN_HOSTS: [&str; 4] = ["accounts.google.com", "www.instagram.com", "api.instagram.com", "www.tiktok.com"];
 
 #[derive(rust_embed::RustEmbed)]
@@ -50,6 +50,7 @@ pub fn router(app: Arc<App>) -> Router {
 		.route("/api/setup/public-url", put(setup_public_url))
 		.route("/api/setup/{platform}", put(setup_put).delete(setup_delete))
 		.route("/api/accounts", get(accounts_list))
+		.route("/api/analytics", get(analytics_get))
 		.route("/api/accounts/{id}", delete(account_delete))
 		.route("/api/accounts/{id}/verify", post(account_verify))
 		.route("/api/demo/accounts", post(demo_accounts))
@@ -991,4 +992,11 @@ async fn cover_get(State(app): S, Path(id): Path<String>, headers: HeaderMap) ->
 	let not_found = || (StatusCode::NOT_FOUND, "Not found").into_response();
 	let Some(m) = crate::covers::get(&app, &id) else { return not_found() };
 	send_file(&m, &headers).await.unwrap_or_else(not_found)
+}
+
+/** Account stats: `?days=7|28|90`, optional `account=<id>`, and `fresh=1` to skip the 10-minute cache. */
+async fn analytics_get(State(app): S, Query(q): Query<HashMap<String, String>>) -> Response {
+	let days = q.get("days").and_then(|d| d.parse::<i64>().ok()).unwrap_or(28);
+	let fresh = q.get("fresh").map(|v| v == "1").unwrap_or(false);
+	ok(crate::analytics::report(&app, days, q.get("account").map(String::as_str), fresh).await)
 }

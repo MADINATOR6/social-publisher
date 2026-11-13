@@ -79,7 +79,7 @@ pub fn authorize_url(app: &App, state: &str) -> String {
 		("client_id", &get(app, "INSTAGRAM_APP_ID")),
 		("redirect_uri", &redirect_uri(app, Platform::Instagram)),
 		("response_type", "code"),
-		("scope", "instagram_business_basic,instagram_business_content_publish"),
+		("scope", "instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights"),
 		("state", state),
 	]);
 	format!("https://www.instagram.com/oauth/authorize?{q}")

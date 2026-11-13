@@ -6,6 +6,7 @@
 #![allow(clippy::result_large_err, clippy::type_complexity)]
 
 pub mod accounts;
+pub mod analytics;
 pub mod app;
 pub mod covers;
 pub mod crypto;

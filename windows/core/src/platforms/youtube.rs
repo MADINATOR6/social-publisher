@@ -49,7 +49,7 @@ pub fn authorize_url(app: &App, state: &str, challenge: &str) -> String {
 		("client_id", &get(app, "GOOGLE_CLIENT_ID")),
 		("redirect_uri", &redirect_uri(app, crate::db::Platform::Youtube)),
 		("response_type", "code"),
-		("scope", "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly"),
+		("scope", "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/yt-analytics.readonly"),
 		("access_type", "offline"),
 		("prompt", "consent"),
 		("include_granted_scopes", "true"),

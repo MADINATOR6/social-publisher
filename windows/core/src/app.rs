@@ -38,6 +38,7 @@ pub struct Endpoints {
 	pub google_revoke: String,
 	pub youtube_api: String,
 	pub youtube_upload: String,
+	pub youtube_analytics: String,
 	pub instagram_graph: String,
 	pub instagram_api: String,
 	pub tiktok_api: String,
@@ -69,6 +70,7 @@ impl Default for Endpoints {
 			google_revoke: "https://oauth2.googleapis.com/revoke".into(),
 			youtube_api: "https://www.googleapis.com/youtube/v3".into(),
 			youtube_upload: "https://www.googleapis.com/upload/youtube/v3".into(),
+			youtube_analytics: "https://youtubeanalytics.googleapis.com/v2".into(),
 			instagram_graph: "https://graph.instagram.com".into(),
 			instagram_api: "https://api.instagram.com".into(),
 			tiktok_api: "https://open.tiktokapis.com".into(),
@@ -111,6 +113,8 @@ pub struct App {
 	pub log: Logger,
 	pub shell: OnceLock<Box<dyn Shell>>,
 	pub(crate) settings_cache: Mutex<Option<(Instant, Arc<HashMap<String, String>>)>>,
+	/// Account stats by "account:days", kept for a few minutes (see `analytics.rs`).
+	pub(crate) analytics_cache: Mutex<HashMap<String, (Instant, serde_json::Value)>>,
 	pub(crate) pending_oauth: Mutex<HashMap<String, PendingOAuth>>,
 	pub(crate) refresh_lock: tokio::sync::Mutex<()>,
 	/// Wakes the worker as soon as a post is created or retried, instead of waiting for its next poll.
@@ -135,6 +139,7 @@ impl App {
 			log,
 			shell: OnceLock::new(),
 			settings_cache: Mutex::new(None),
+			analytics_cache: Mutex::new(HashMap::new()),
 			pending_oauth: Mutex::new(HashMap::new()),
 			refresh_lock: tokio::sync::Mutex::new(()),
 			wake: tokio::sync::Notify::new(),

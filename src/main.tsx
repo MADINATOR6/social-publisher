@@ -34,10 +34,12 @@ function SoundToggle() {
 import { CreatePage } from './pages/Create';
 import { HistoryPage } from './pages/History';
 import { AccountsPage } from './pages/Accounts';
+import { StatsPage } from './pages/Stats';
 
 const PAGES = {
 	'/': { title: 'Create post', sub: 'One video, every platform.', icon: Icon.create },
 	'/history': { title: 'Post history', sub: 'Where every post stands.', icon: Icon.history },
+	'/stats': { title: 'Stats', sub: 'Followers, views and where your audience is.', icon: Icon.chart },
 	'/accounts': { title: 'Connected accounts', sub: 'Official sign-in only. Your passwords never touch this app.', icon: Icon.accounts },
 } as const;
 type Path = keyof typeof PAGES;
@@ -127,7 +129,7 @@ function App() {
 						<small>{live.length ? `${live.length} account${live.length === 1 ? '' : 's'}` : 'No accounts yet'}</small>
 					</div>
 				</div>
-				{(Object.keys(PAGES) as Path[]).map((p) => {
+				{(Object.keys(PAGES) as Path[]).filter((p) => p !== '/stats' || has(config, 'analytics')).map((p) => {
 					const P = PAGES[p];
 					const count = p === '/history' ? (inFlight || attention) : p === '/accounts' ? reconnect : 0;
 					return (
@@ -157,6 +159,8 @@ function App() {
 						<div className="panel empty">Loading…</div>
 					) : path === '/' ? (
 						<CreatePage accounts={accounts} config={config} go={go} onPublished={() => (refreshPosts(), refreshAccounts())} />
+					) : path === '/stats' && has(config, 'analytics') ? (
+						<StatsPage accounts={accounts} go={go} />
 					) : path === '/history' ? (
 						<HistoryPage posts={posts} refresh={refreshPosts} go={go} canRepost={has(config, 'repost')} />
 					) : (

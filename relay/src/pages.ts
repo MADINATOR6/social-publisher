@@ -75,11 +75,11 @@ export function page(kind: 'home' | 'terms' | 'privacy' | 'notice', env: Env, me
 <p>This policy explains what the Publisher desktop app and its sign-in service collect, and what happens to it. Publisher is provided by ${who}.</p>
 <h2>What Publisher reads from your accounts</h2>
 <ul>
-<li><b>YouTube (Google):</b> your channel ID, name, handle and picture, to show which channel is connected. Permission to upload videos to that channel and to read their processing status.</li>
-<li><b>Instagram:</b> your account ID, username, name, picture and account type, to show which account is connected. Permission to publish Reels to that account and read their status.</li>
-<li><b>TikTok:</b> your open ID, display name and avatar, to show which account is connected. Permission to send videos to your TikTok inbox as drafts and read their upload status.</li>
+<li><b>YouTube (Google):</b> your channel ID, name, handle and picture, to show which channel is connected. Permission to upload videos to that channel and to read their processing status, and to read the channel's own analytics (views, likes, comments, shares, watch time, subscribers, and viewers by country, age and gender) to show them to you on the Stats page.</li>
+<li><b>Instagram:</b> your account ID, username, name, picture and account type, to show which account is connected. Permission to publish Reels to that account and read their status, and to read the account's own insights (views, reach, likes, comments, shares, saves, and followers by country, age and gender) for the Stats page.</li>
+<li><b>TikTok:</b> your open ID, display name and avatar, to show which account is connected. Permission to send videos to your TikTok inbox as drafts and read their upload status, and to read your follower count, total likes, and your recent videos with their views, likes, comments and shares for the Stats page.</li>
 </ul>
-<p>Publisher does not read your messages, followers, comments, analytics or any other content.</p>
+<p>Publisher does not read your messages, the content of comments, who your followers are, or anything else. Stats are fetched only when you open the Stats page, kept in memory for a few minutes, and never sent anywhere else.</p>
 <h2>Where your data is kept</h2>
 <ul>
 <li><b>On your computer:</b> sign-in tokens, connected account names, your videos, captions and post history. Tokens are encrypted, with the key protected by Windows for your user account.</li>

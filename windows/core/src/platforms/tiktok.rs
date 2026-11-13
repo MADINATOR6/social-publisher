@@ -51,7 +51,8 @@ pub fn validate_settings(app: &App, s: &Value, caption: &str) -> Vec<Issue> {
 }
 
 pub fn authorize_url(app: &App, state: &str) -> String {
-	let mut scopes = vec!["user.info.basic", "video.upload"];
+	// user.info.stats and video.list feed the Stats page.
+	let mut scopes = vec!["user.info.basic", "user.info.stats", "video.list", "video.upload"];
 	if app.cfg.tiktok_direct_post {
 		scopes.push("video.publish");
 	}
