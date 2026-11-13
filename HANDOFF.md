@@ -1,9 +1,8 @@
 # Handoff
 
-**Updated:** 2026-11-14 01:05 PST
-**Path:** `/Users/arnidokarlosantinos./Library/Application Support/Claude-Account2/scratch-workspaces/77dbbdcd-dba2-47dc-890e-5d24e0d3f9ae/8f22af67-7648-4878-ae17-c4776b60d570/scratch-2026-11-10-568d7e/social-publisher`
-**Warning:** this is Claude's temporary session folder; deleting the session deletes it. See "Moving the project".
-**Git:** local repo, branch `main`, one checkpoint commit, no remote. `.env`, `data/`, videos, `node_modules/` and `dist/` are excluded.
+**Updated:** 2026-11-14 01:15 PST
+**Path:** `/Users/arnidokarlosantinos./Projects/social-publisher` (permanent). An older copy remains in Claude's temporary session folder and is deleted with that session.
+**Git:** local repo, branch `main`, checkpoint commits, no remote. `.env`, `data/`, videos, `node_modules/` and `dist/` are excluded.
 
 ## Objective
 A private, local app that publishes one video to the owner's YouTube, Instagram Reels and TikTok from one screen, with reliable background jobs.
@@ -31,11 +30,8 @@ A private, local app that publishes one video to the owner's YouTube, Instagram 
 ## External setup still needed
 Paste Google OAuth keys in Connected accounts (steps in PROJECT.md). Instagram and TikTok later.
 
-## Moving the project (recommended before real use)
-1. Stop the app so the worker and database close.
-2. Copy the folder **with `.env` and `data/` together**: the database is encrypted with the key in `.env`. For example: `rsync -a --exclude node_modules --exclude dist <path above>/ ~/Projects/social-publisher/`
-3. In the new folder: `chmod 600 .env && chmod 700 data`, then `npm install && npm test && npm run dev`.
-4. Delete the old session only after the new copy works.
+## Moved on 2026-11-14
+Copied with `.env` and `data/` together (checksums match). `.env` is `600` and `data/` is `700`. Dependencies were reinstalled; tests and build pass from this folder. Start with `npm run dev`.
 
 ## Recommended next task
 One owner-authorised **private** YouTube upload, end to end.

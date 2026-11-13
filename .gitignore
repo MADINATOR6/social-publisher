@@ -27,3 +27,6 @@ data/
 # Logs and OS clutter
 *.log
 .DS_Store
+
+# Local editor/agent settings
+.claude/
