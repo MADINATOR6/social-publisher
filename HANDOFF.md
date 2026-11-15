@@ -1,6 +1,6 @@
 # Handoff
 
-**Updated:** 2026-11-15 (branch `mac-parity`)
+**Updated:** 2026-11-16 (branch `mac-parity`)
 **Source:** this repository (owner's copy at `~/Projects/social-publisher`).
 **Packaged app:** `~/Projects/social-publisher/release/mac-arm64/Publisher.app` (DMG: `release/Publisher-1.0.0-arm64.dmg`)
 **App data:** `~/Library/Application Support/Publisher/` (database, videos, settings, Keychain-protected `keys.json`, logs)
@@ -14,7 +14,20 @@ A private Mac app that publishes one video to the owner's YouTube, Instagram Ree
 - Launch: double-click `Publisher.app`, or drag it into Applications first. No Terminal, dev server or Node install needed.
 - Development: `npm run dev` (browser, uses `.env`) or `npm run desktop:dev` (Electron, unpackaged).
 
-## Latest: Windows extras now work on the Mac (branch `mac-parity`)
+## Latest (2026-11-16, branch `mac-parity`)
+- **Real accounts connected.** Two YouTube accounts (Google Desktop-app client, test users) and two TikTok accounts (Sandbox app, both added as target users). Instagram is still being set up.
+- **Several accounts per platform.** Sign-in always asks which account to use (Google `select_account`, TikTok `disable_auto_auth`, Instagram `force_reauth`). Connected accounts has an **Add another** button.
+- **Account groups.** Saved sets of accounts (for example one YouTube, one TikTok and one Instagram) appear as one-click chips above Post to. They can be managed in Connected accounts and filtered in Stats. Stored in the `account_groups` table and served at `/api/groups`.
+- **Quality checks.** Publisher never re-encodes. The composer warns about low resolution, bitrate or frame rate and adds platform tips (`src/quality.ts`).
+- **Music copyright checks.** A Music picker (No music, Royalty-free, Popular song) adds per-platform warnings: a YouTube block risk over 60 s, Instagram muting, and a TikTok tip to add the song from Sounds in the inbox draft. No platform API can add its licensed music.
+- **Instagram has three sign-in routes**, chosen in its setup panel: Facebook Login (works without a Business portfolio and needs a Facebook Page linked to each Instagram account), Unified login (`config_id`, needs a Business portfolio) and the older Instagram Login. The setup panel shows the full steps for each.
+- **Public `/terms` and `/privacy` pages** are served by the app (TikTok and Meta require these links). Through the tunnel they are `<public address>/terms` and `/privacy`.
+- **TikTok steps rewritten** for the real flow: Sandbox, Login Kit, Content Posting API, Display API (`video.list`), target users, then the Sandbox credentials.
+- **Keychain:** after every rebuild macOS asks once for Keychain access. Choose **Always Allow**. The app retries for about 15 s if the Keychain is still waking up.
+- **Tests:** 92 of 92 pass. Typecheck passes.
+- **Still not done:** no real publish has been run on any platform yet, and Instagram is not connected.
+
+## Earlier: Windows extras now work on the Mac (branch `mac-parity`)
 Built on the Windows work (PR #1) plus the npm install fix (PR #2). The Node server and Electron shell now provide the features the Windows build added. See PROJECT.md, "Extras shared with the Windows build".
 - **Features:** scheduled publishing, "I posted it" for TikTok inbox drafts, Post again, cover images (YouTube thumbnail, Instagram cover), Stats (a port of `analytics.rs`), macOS finish notifications with the finish sound, and the click sounds with on/off toggles.
 - **Checks:** 76 of 76 tests pass (21 new). Typecheck passes. The packaged app was rebuilt and opened. All six features are listed, Stats shows demo numbers, and the composer shows Schedule and Thumbnail. A demo publish with a cover finished, and the finish notice reached the app.
