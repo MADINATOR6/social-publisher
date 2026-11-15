@@ -31,7 +31,7 @@ const GUIDE: Record<Platform, { where: string; steps: (s: Setup['platforms'][Pla
 		where: 'Meta for Developers',
 		steps: () => [
 			{ text: <>Switch your Instagram to a <b>Professional</b> account (Business or Creator) in the Instagram app’s settings.</> },
-			{ text: <>Create an app and pick the use case <b>Manage messaging & content on Instagram</b>.</>, link: ['Open Meta for Developers', 'https://developers.facebook.com/apps/creation/'] },
+			{ text: <>Log in to Meta for Developers, click <b>Create app</b>, and pick the use case <b>Manage messaging & content on Instagram</b>.</>, link: ['Open My Apps', 'https://developers.facebook.com/apps/'] },
 			{ text: <>Under <b>App roles → Roles</b>, add your Instagram account as an <b>Instagram Tester</b>, then accept the invite.</>, link: ['Accept the invite', 'https://www.instagram.com/accounts/manage_access/'] },
 			{ text: <>In <b>API setup with Instagram login → Business login settings</b>, add the address below as the OAuth redirect URI.</> },
 			{ text: <>Paste the <b>Instagram</b> app ID and secret here. These are not the Facebook app ones.</> },
