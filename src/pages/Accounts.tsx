@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { computer, desktop, openSignIn } from '../desktop';
-import { api, ApiError, fmtTime, PLATFORM_NAME, type Account, type Config, type Issue, type Platform, type Setup } from '../api';
+import { has, api, ApiError, fmtTime, PLATFORM_NAME, type Account, type Config, type Issue, type Platform, type Setup } from '../api';
 import { Avatar, FieldError, Icon, PlatformMark } from '../ui';
+import { GroupsManager } from './GroupsManager';
 
 type Step = { text: React.ReactNode; link?: [string, string] };
 
@@ -290,6 +291,7 @@ export function AccountsPage({ accounts, config, refresh, refreshConfig }: { acc
 					</div>
 				);
 			})}
+			{has(config, 'groups') && <GroupsManager accounts={accounts} />}
 			<p className="faint" style={{ fontSize: 12 }}>
 				{anyHosted
 					? <>Accounts connect through each platform’s official sign-in page. This app never sees your passwords, and sign-in tokens stay encrypted on this {computer}.</>

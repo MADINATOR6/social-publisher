@@ -80,6 +80,7 @@ export const api = {
 	beginOAuth: (p: Platform) => call<{ url: string }>('POST', `/api/oauth/${p}/begin`),
 	groups: () => call<Group[]>('GET', '/api/groups'),
 	createGroup: (name: string, accountIds: string[]) => call<Group>('POST', '/api/groups', { name, accountIds }),
+	updateGroup: (id: string, name: string, accountIds: string[]) => call<Group[]>('PUT', `/api/groups/${id}`, { name, accountIds }),
 	deleteGroup: (id: string) => call<Group[]>('DELETE', `/api/groups/${id}`),
 	verify: (accountId: string) => call<Verify>('POST', `/api/accounts/${accountId}/verify`),
 	posts: () => call<Post[]>('GET', '/api/posts'),

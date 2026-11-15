@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { api, PLATFORM_NAME, type Account, type Platform, type Stats, type StatsReport } from '../api';
+import { api, PLATFORM_NAME, type Account, type Group, type Platform, type Stats, type StatsReport } from '../api';
 import { Avatar, Icon, PlatformMark, Seg } from '../ui';
 
 // One fixed color per platform (validated together for the dark surface: lightness band, chroma,
@@ -24,6 +24,9 @@ const dailyLabel = (s: Stats) => (dailyKey(s) === 'views' ? 'views' : 'accounts 
 export function StatsPage({ accounts, go }: { accounts: Account[]; go: (p: string) => void }) {
 	const [days, setDays] = useState(28);
 	const [pick, setPick] = useState<string>('all');
+	// Saved groups (Mac server). A backend without groups answers 404, which simply means none.
+	const [groups, setGroups] = useState<Group[]>([]);
+	useEffect(() => void api.groups().then(setGroups).catch(() => undefined), []);
 	const [data, setData] = useState<StatsReport | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -52,7 +55,9 @@ export function StatsPage({ accounts, go }: { accounts: Account[]; go: (p: strin
 		);
 
 	const all = (data?.accounts ?? []).slice().sort((a, b) => ORDER.indexOf(a.platform) - ORDER.indexOf(b.platform));
-	const shown = pick === 'all' ? all : all.filter((s) => s.accountId === pick);
+	const group = pick.startsWith('g:') ? groups.find((g) => g.id === pick.slice(2)) : undefined;
+	// A group shows the combined numbers of just its accounts.
+	const shown = pick === 'all' ? all : group ? all.filter((s) => group.accountIds.includes(s.accountId)) : all.filter((s) => s.accountId === pick);
 	const ok = shown.filter((s) => s.status === 'ok');
 	const problems = shown.filter((s) => s.status !== 'ok');
 
@@ -61,6 +66,12 @@ export function StatsPage({ accounts, go }: { accounts: Account[]; go: (p: strin
 			<div className="stats-bar">
 				<div className="chips" role="group" aria-label="Account">
 					<button className={`schip ${pick === 'all' ? 'on' : ''}`} onClick={() => setPick('all')}>All accounts</button>
+					{groups.filter((g) => g.accountIds.length).map((g) => (
+						<button key={g.id} className={`schip group ${pick === `g:${g.id}` ? 'on' : ''}`} onClick={() => setPick(`g:${g.id}`)} title={`${g.name}: combined numbers of its ${g.accountIds.length} accounts`}>
+							<Icon.accounts />
+							<span className="ellipsis">{g.name}</span>
+						</button>
+					))}
 					{all.map((s) => (
 						<button key={s.accountId} className={`schip ${pick === s.accountId ? 'on' : ''}`} onClick={() => setPick(s.accountId)} title={`${s.name} on ${PLATFORM_NAME[s.platform]}`}>
 							<span className="sdot" style={{ background: PLATFORM_COLOR[s.platform] }} />
