@@ -433,6 +433,7 @@ function mediaView(m: MediaRow) {
 		height: m.height,
 		videoCodec: m.video_codec,
 		audioCodec: m.audio_codec,
+		fps: m.fps,
 		shortsShape: isShortsShape(m),
 		issues: Object.fromEntries(PLATFORMS.map((p) => [p, validateMedia(p, { ...mediaInfo(m), mime: m.mime, filename: m.filename }).map((i) => i.message)])),
 	};
