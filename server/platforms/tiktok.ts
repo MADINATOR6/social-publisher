@@ -42,7 +42,7 @@ export const tiktok: Adapter = {
 	},
 
 	authorizeUrl(state) {
-		const scopes = ['user.info.basic', 'video.upload', ...(config.tiktok.directPostEnabled ? ['video.publish'] : [])];
+		const scopes = ['user.info.basic', 'user.info.stats', 'video.list', 'video.upload', ...(config.tiktok.directPostEnabled ? ['video.publish'] : [])];
 		const q = new URLSearchParams({ client_key: config.tiktok.clientKey, scope: scopes.join(','), response_type: 'code', redirect_uri: redirectUri('tiktok'), state });
 		return `https://www.tiktok.com/v2/auth/authorize/?${q}`;
 	},

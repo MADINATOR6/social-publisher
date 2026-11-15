@@ -11,13 +11,18 @@ import { config, configured } from './config.js';
 import { getDb, now, workerStatus, type Platform } from './db.js';
 import { pkcePair, randomId, readSignedToken, redact, signedToken } from './crypto.js';
 import { accessToken, disconnect, getAccount, listAccounts, markAccount, upsertAccount } from './accounts.js';
-import { createPost, listPosts, PLATFORM_LABEL, postView, retryTargets } from './jobs.js';
+import { cancelScheduled, createPost, listPosts, markPosted, PLATFORM_LABEL, postView, reschedule, retryTargets, tiktokLink, validScheduleTime } from './jobs.js';
+import * as covers from './covers.js';
+import { report } from './analytics.js';
+import { enabled as notifyEnabled } from './notify.js';
 import { LIMITS, isShortsShape, probe, validateMedia, VIDEO_MIME, type Issue } from './media.js';
 import { ADAPTERS, adapterFor, PLATFORMS } from './platforms/index.js';
 import { checkKeys, FIELDS, saveSettings, setupView } from './settings.js';
 import type { MediaRow } from './platforms/types.js';
 import { AuthError } from './platforms/types.js';
 
+/** Extras shared with the Windows build that the Node server provides too. */
+const FEATURES = ['schedule', 'markPosted', 'repost', 'covers', 'analytics'];
 const SESSION = 'sp_session';
 const DESKTOP = 'sp_desktop';
 const OAUTH = 'sp_oauth';
@@ -32,6 +37,8 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
 	});
 	await app.register(cookie, { secret: config.sessionSecret });
 	app.addContentTypeParser(['application/octet-stream', ...VIDEO_MIME], (_req, payload, done) => done(null, payload));
+	// Cover images arrive as raw JPEG/PNG bytes (checked again by their first bytes in covers.ts).
+	app.addContentTypeParser(['image/jpeg', 'image/png'], { parseAs: 'buffer', bodyLimit: covers.MAX_BYTES + 1024 }, (_req, body, done) => done(null, body));
 
 	const secure = config.appUrl.startsWith('https');
 	const desktopOk = (req: FastifyRequest) => {
@@ -85,6 +92,8 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
 	app.get('/api/config', async () => ({
 		demoMode: config.demoMode,
 		publicBaseUrl: Boolean(config.publicBaseUrl),
+		// Extras shared with the Windows build. The UI shows a feature only when it is listed here.
+		features: [...FEATURES, ...(config.desktop ? ['notifications'] : [])],
 		platforms: Object.fromEntries(PLATFORMS.map((p) => [p, { configured: configured[p](), ...ADAPTERS[p].availability(), limits: LIMITS[p] }])),
 	}));
 
@@ -261,7 +270,14 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
 
 	// ---------- posts ----------
 	const targetSchema = z.object({ accountId: z.string().min(1), settings: z.record(z.string(), z.any()).default({}) });
-	const postSchema = z.object({ idempotencyKey: z.string().min(8).max(100), mediaId: z.string().min(1), caption: z.string().max(5000).default(''), targets: z.array(targetSchema).min(1, 'Choose at least one destination.') });
+	const scheduleMsg = 'Pick a time at least a minute from now and within 60 days.';
+	const postSchema = z.object({
+		idempotencyKey: z.string().min(8).max(100),
+		mediaId: z.string().min(1),
+		caption: z.string().max(5000).default(''),
+		targets: z.array(targetSchema).min(1, 'Choose at least one destination.'),
+		scheduledAt: z.number().nullish().refine((v) => v == null || validScheduleTime(v), scheduleMsg),
+	});
 
 	app.post('/api/posts', async (req, reply) => {
 		const parsed = postSchema.safeParse(req.body);
@@ -291,13 +307,13 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
 			const av = adapter.availability();
 			if (!av.available) issues.push({ field: `target.${a.id}`, message: av.note });
 			const caption = String(t.settings.captionOverride ?? '').trim() || body.caption;
-			for (const i of [...validateMedia(a.platform, { ...mediaInfo(media), mime: media.mime, filename: media.filename }), ...adapter.validateSettings(t.settings, caption, mediaInfo(media))]) {
+			for (const i of [...validateMedia(a.platform, { ...mediaInfo(media), mime: media.mime, filename: media.filename }), ...adapter.validateSettings(t.settings, caption, mediaInfo(media)), ...covers.issues(a.platform, t.settings)]) {
 				issues.push({ field: i.field === 'media' ? `media.${a.platform}` : i.field, message: i.message });
 			}
 			targets.push({ accountId: a.id, platform: a.platform, settings: t.settings });
 		}
 		if (issues.length) return reply.code(422).send({ error: 'Fix the highlighted fields before publishing.', issues });
-		const r = createPost({ idempotencyKey: body.idempotencyKey, mediaId: media.id, caption: body.caption, isDemo: Boolean(demo), targets });
+		const r = createPost({ idempotencyKey: body.idempotencyKey, mediaId: media.id, caption: body.caption, isDemo: Boolean(demo), targets, scheduledAt: body.scheduledAt ?? null });
 		return { post: postView(r.id), duplicate: r.duplicate };
 	});
 
@@ -308,6 +324,61 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
 		const ids = retryTargets((req.params as any).id, b.success ? b.data.targetIds : undefined);
 		if (!ids.length) return reply.code(409).send({ error: 'Nothing to retry. Only failed destinations can be retried.' });
 		return { retried: ids, post: postView((req.params as any).id) };
+	});
+
+	app.post('/api/posts/:id/schedule', async (req, reply) => {
+		const at = (req.body as any)?.at ?? null;
+		if (at !== null && !validScheduleTime(at)) return reply.code(422).send({ error: scheduleMsg, issues: [{ field: 'scheduledAt', message: scheduleMsg }] });
+		if (!reschedule((req.params as any).id, at)) return reply.code(409).send({ error: 'This post has already started publishing, so its time cannot change.' });
+		return { post: postView((req.params as any).id) };
+	});
+	app.post('/api/posts/:id/cancel', async (req, reply) => {
+		if (!cancelScheduled((req.params as any).id)) return reply.code(409).send({ error: 'Nothing to cancel. Only destinations still waiting for their time can be cancelled.' });
+		return { post: postView((req.params as any).id) };
+	});
+	app.post('/api/targets/:id/posted', async (req, reply) => {
+		const link = tiktokLink(String((req.body as any)?.permalink ?? ''));
+		if (!link.ok) return reply.code(422).send({ error: link.message, issues: [{ field: 'permalink', message: link.message }] });
+		try {
+			return { post: postView(markPosted((req.params as any).id, link.link)) };
+		} catch (e: any) {
+			return reply.code(e.message === 'Not found' ? 404 : 409).send({ error: e.message });
+		}
+	});
+
+	// ---------- cover images ----------
+	app.put('/api/covers', { bodyLimit: covers.MAX_BYTES + 1024 }, async (req, reply) => {
+		let body = req.body as any;
+		if (body && typeof body.pipe === 'function') {
+			const chunks: Buffer[] = [];
+			let n = 0;
+			for await (const c of body as AsyncIterable<Buffer>) {
+				n += c.length;
+				if (n > covers.MAX_BYTES) return reply.code(422).send({ error: 'Cover images can be up to 8 MB.' });
+				chunks.push(c);
+			}
+			body = Buffer.concat(chunks);
+		}
+		const r = covers.save(Buffer.isBuffer(body) ? body : Buffer.alloc(0));
+		return r.ok ? r.view : reply.code(422).send({ error: r.message });
+	});
+	app.get('/api/covers/:id', async (req, reply) => {
+		const m = covers.get((req.params as any).id);
+		return m ? sendFile(req, reply, m) : reply.code(404).send('Not found');
+	});
+
+	// ---------- stats ----------
+	app.get('/api/analytics', async (req) => {
+		const q = req.query as Record<string, string | undefined>;
+		return report(Number(q.days ?? 28), q.account || undefined, q.fresh === '1');
+	});
+
+	// ---------- desktop preferences ----------
+	app.get('/api/desktop/prefs', async () => ({ notifications: notifyEnabled() }));
+	app.put('/api/desktop/prefs', async (req) => {
+		const on = (req.body as any)?.notifications;
+		if (typeof on === 'boolean') saveSettings({ NOTIFY: on ? null : 'off' });
+		return { notifications: notifyEnabled() };
 	});
 
 	// ---------- built UI ----------

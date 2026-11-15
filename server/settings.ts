@@ -9,7 +9,7 @@ export const FIELDS: Record<Platform, { id: string; secret: string; idLabel: str
 	instagram: { id: 'INSTAGRAM_APP_ID', secret: 'INSTAGRAM_APP_SECRET', idLabel: 'Instagram app ID', secretLabel: 'Instagram app secret' },
 	tiktok: { id: 'TIKTOK_CLIENT_KEY', secret: 'TIKTOK_CLIENT_SECRET', idLabel: 'Client key', secretLabel: 'Client secret' },
 };
-const ALLOWED = new Set([...Object.values(FIELDS).flatMap((f) => [f.id, f.secret]), 'PUBLIC_BASE_URL']);
+const ALLOWED = new Set([...Object.values(FIELDS).flatMap((f) => [f.id, f.secret]), 'PUBLIC_BASE_URL', 'NOTIFY']);
 
 let cache: { at: number; values: Map<string, string> } | null = null;
 

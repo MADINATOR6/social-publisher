@@ -109,6 +109,11 @@ function migrate(d: DatabaseSync) {
 		beat_at INTEGER NOT NULL
 	);
 	`);
+	// Added with the scheduling and finish-notification features (same columns as the Windows build).
+	for (const [table, column, kind] of [['posts', 'scheduled_at', 'INTEGER'], ['posts', 'notified_at', 'INTEGER']] as const) {
+		const cols = d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+		if (!cols.some((c) => c.name === column)) d.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${kind}`);
+	}
 }
 
 /** The worker records a heartbeat here; the web server only reads it. */

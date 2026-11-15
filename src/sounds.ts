@@ -1,7 +1,7 @@
 // UI sounds, ported from the Ethereal Enchantment app (renderer "Feel" module) so both apps sound alike.
 // Everything is synthesized with Web Audio: there are no sound files and nothing is fetched. The mute
-// choice is kept in localStorage. Only the Windows build turns them on (see `enableSounds`), so the Mac
-// app is unchanged.
+// choice is kept in localStorage. Both desktop apps turn them on (see `enableSounds`); a plain browser
+// tab stays silent.
 
 const KEY = 'sp.sounds';
 let ctx: AudioContext | null = null;
@@ -200,7 +200,7 @@ function soundFor(el: HTMLElement): string {
 export function enableSounds() {
 	if (enabled) return;
 	enabled = true;
-	// The Windows app calls this when a post finishes, also while the window is hidden in the tray.
+	// The desktop app calls this when a post finishes, also while its window is hidden.
 	(window as any).__publisherFinished = (n: { ok: boolean }) => play(n?.ok ? 'launch' : 'danger');
 	listeners.forEach((f) => f());
 	addEventListener(

@@ -1,7 +1,7 @@
 // Publisher desktop app: main process.
 // Owns the window, the menu and the quit flow, keeps the encryption keys in the macOS Keychain
 // (via safeStorage), and supervises two utility processes: the local API server and the publishing worker.
-import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, session, shell, utilityProcess, type UtilityProcess } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, safeStorage, session, shell, utilityProcess, type UtilityProcess } from 'electron';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -137,6 +137,8 @@ function start(name: 'api' | 'worker'): Promise<void> {
 				svc.state = 'running';
 				log(`${name} ready`);
 				resolve();
+			} else if (m?.type === 'notice' && name === 'worker') {
+				announce(m.notice);
 			} else if (m?.type === 'fatal') {
 				clearTimeout(timer);
 				reject(new Error(String(m.message ?? 'failed to start')));
@@ -182,6 +184,20 @@ async function supervise(name: 'api' | 'worker') {
 	}
 }
 
+/** A post finished: a macOS notification plus the app's finish sound (played by the page, even while hidden). */
+function announce(n: { postId?: string; title?: string; body?: string; ok?: boolean }) {
+	if (!n || typeof n.title !== 'string') return;
+	const ok = n.ok !== false;
+	win?.webContents.executeJavaScript(`window.__publisherFinished && window.__publisherFinished({ ok: ${ok} })`).catch(() => undefined);
+	if (!Notification.isSupported()) return;
+	const note = new Notification({ title: n.title.slice(0, 120), body: String(n.body ?? '').slice(0, 240), silent: true });
+	note.on('click', () => {
+		showWindow();
+		win?.webContents.executeJavaScript("history.pushState(null, '', '/history'); dispatchEvent(new PopStateEvent('popstate'))").catch(() => undefined);
+	});
+	note.show();
+}
+
 async function stopServices() {
 	const w = svcs.worker.proc;
 	if (w) {
@@ -213,6 +229,8 @@ function createWindow() {
 			webviewTag: false,
 			spellcheck: false,
 			devTools: !app.isPackaged,
+			// Let the finish sound play while the window is closed (hidden).
+			backgroundThrottling: false,
 		},
 	});
 	win.once('ready-to-show', () => win?.show());

@@ -5,6 +5,7 @@
 // Direct file upload (rupload) is documented only for the Facebook Login path, so this app serves
 // each video at a short-lived signed URL under PUBLIC_BASE_URL.
 import { config, redirectUri } from '../config.js';
+import * as covers from '../covers.js';
 import { signedToken } from '../crypto.js';
 import { form, http, json } from './http.js';
 import type { Adapter, Outcome, PublishContext } from './types.js';
@@ -38,7 +39,7 @@ export const instagram: Adapter = {
 			client_id: config.instagram.appId,
 			redirect_uri: redirectUri('instagram'),
 			response_type: 'code',
-			scope: 'instagram_business_basic,instagram_business_content_publish',
+			scope: 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights',
 			state,
 		});
 		return `https://www.instagram.com/oauth/authorize?${q}`;
@@ -105,6 +106,13 @@ export const instagram: Adapter = {
 			ctx.save({ state: 'uploading', phase: 'container', progress: 0.05 });
 			const params: Record<string, string> = { media_type: 'REELS', video_url: publicMediaUrl(ctx.media.id), caption: ctx.caption, share_to_feed: String(ctx.settings.shareToFeed !== false) };
 			if (ctx.settings.thumbOffsetMs != null && ctx.settings.thumbOffsetMs !== '') params.thumb_offset = String(Math.round(Number(ctx.settings.thumbOffsetMs)));
+			// A cover image the owner chose replaces the cover frame. A missing one is skipped, never fatal.
+			const coverId = covers.chosen(ctx.settings);
+			if (coverId) {
+				const c = covers.get(coverId);
+				if (c) params.cover_url = publicMediaUrl(c.id);
+				else ctx.log('The chosen cover image is no longer on this computer, so Instagram picks the cover.');
+			}
 			const c = await json(`${G()}/${igId}/media`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/x-www-form-urlencoded' }, body: form(params) });
 			ctx.save({ phase: 'processing', state: 'processing', providerRef: { containerId: c.id }, progress: 0.1 });
 			ctx.log('Instagram is downloading and processing the video.');

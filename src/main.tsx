@@ -2,12 +2,13 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { api, has, type Account, type Config, type Post, type Status } from './api';
-import { computer, logsHint, onWindows } from './desktop';
+import { computer, desktop, logsHint, onWindows } from './desktop';
 import { Icon } from './ui';
 import { enableSounds, sounds } from './sounds';
 
-// The Windows app clicks like Ethereal Enchantment. The Mac app stays silent.
-if (onWindows) enableSounds();
+// The desktop apps (Mac and Windows) click like Ethereal Enchantment, with a Sounds on/off button.
+// In a plain browser (npm run dev) the page stays silent.
+if (desktop) enableSounds();
 
 /** Windows app: whether finished posts show a notification. Kept by the app, not the browser. */
 function NotifyToggle() {

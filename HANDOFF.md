@@ -1,6 +1,6 @@
 # Handoff
 
-**Updated:** 2026-11-14 01:35 PST
+**Updated:** 2026-11-15 (branch `mac-parity`)
 **Source:** this repository (owner's copy at `~/Projects/social-publisher`).
 **Packaged app:** `~/Projects/social-publisher/release/mac-arm64/Publisher.app` (DMG: `release/Publisher-1.0.0-arm64.dmg`)
 **App data:** `~/Library/Application Support/Publisher/` (database, videos, settings, Keychain-protected `keys.json`, logs)
@@ -13,6 +13,13 @@ A private Mac app that publishes one video to the owner's YouTube, Instagram Ree
 - Build: `cd ~/Projects/social-publisher && npm run package` (optional DMG: `npm run package:dmg`)
 - Launch: double-click `Publisher.app`, or drag it into Applications first. No Terminal, dev server or Node install needed.
 - Development: `npm run dev` (browser, uses `.env`) or `npm run desktop:dev` (Electron, unpackaged).
+
+## Latest: Windows extras now work on the Mac (branch `mac-parity`)
+Built on the Windows work (PR #1) plus the npm install fix (PR #2). The Node server and Electron shell now provide the features the Windows build added. See PROJECT.md, "Extras shared with the Windows build".
+- **Features:** scheduled publishing, "I posted it" for TikTok inbox drafts, Post again, cover images (YouTube thumbnail, Instagram cover), Stats (a port of `analytics.rs`), macOS finish notifications with the finish sound, and the click sounds with on/off toggles.
+- **Checks:** 76 of 76 tests pass (21 new). Typecheck passes. The packaged app was rebuilt and opened. All six features are listed, Stats shows demo numbers, and the composer shows Schedule and Thumbnail. A demo publish with a cover finished, and the finish notice reached the app.
+- **Not checked:** whether the macOS notification banner appears on screen (no screen access), and a real Stats or cover call on any platform.
+- **Reconnect needed:** Stats needs new read-only permissions (`yt-analytics.readonly`, `instagram_business_manage_insights`, TikTok `user.info.stats` and `video.list`), so existing accounts must reconnect before Stats works. TikTok developer apps must add these scopes.
 
 ## Done this pass
 - **Desktop app.** Electron 45.3.2 with compiled backend and worker on Electron's Node 24.22.2. Supervised services with readiness waits and crash restarts, a single-instance lock, a loopback-only API with a per-launch cookie, Keychain-protected keys, and a free-port fallback.
