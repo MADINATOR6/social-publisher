@@ -1,7 +1,7 @@
 import React from 'react';
 import { PLATFORM_NAME, type Account, type Config, type Issue, type Media, type Verify } from '../api';
 import { Icon, PlatformMark } from '../ui';
-import { qualityNotes } from '../quality';
+import { musicNotes, qualityNotes, type Music } from '../quality';
 
 type Kind = 'ok' | 'stop' | 'info' | 'warn';
 type Check = { kind: Kind; text: string; fix?: 'tab' | 'accounts' | 'verify' | 'video' };
@@ -12,7 +12,7 @@ export const TIKTOK_INBOX_LABEL = 'Send to TikTok inbox — finish posting in Ti
 export const issuesFor = (a: Account, issues: Issue[]) =>
 	issues.filter((i) => (i.accountId ? i.accountId === a.id : i.field.startsWith(`${a.platform}.`) || i.field === `caption.${a.platform}` || i.field === `media.${a.platform}` || i.field === `target.${a.id}`));
 
-export function checksFor(a: Account, o: { config: Config; issues: Issue[]; uploadStatus: string; media?: Media; verify?: Verify | 'running' }): Check[] {
+export function checksFor(a: Account, o: { config: Config; issues: Issue[]; uploadStatus: string; media?: Media; verify?: Verify | 'running'; music?: Music; tiktokMode?: 'inbox' | 'direct' }): Check[] {
 	const info = o.config.platforms[a.platform];
 	const out: Check[] = [];
 	const mine = issuesFor(a, o.issues);
@@ -36,6 +36,7 @@ export function checksFor(a: Account, o: { config: Config; issues: Issue[]; uplo
 		if (mediaIssues.length) mediaIssues.forEach((i) => out.push({ kind: 'stop', text: i.message.replace(`${PLATFORM_NAME[a.platform]}: `, ''), fix: 'tab' }));
 		else out.push({ kind: 'ok', text: 'Video passes local checks' });
 		if (o.media) for (const q of qualityNotes(o.media, a.platform)) out.push({ kind: q.kind, text: q.text });
+		for (const q of musicNotes(o.music ?? 'none', o.media, a.platform, o.tiktokMode)) out.push({ kind: q.kind, text: q.text });
 	}
 	// Account problems (keys, reconnect, public address) already have their own lines above.
 	const fieldIssues = mine.filter((i) => i.field !== `media.${a.platform}` && !i.field.startsWith('account.') && !(i.field === `target.${a.id}` && a.status === 'reconnect_required'));
@@ -54,10 +55,12 @@ export function Readiness(props: {
 	uploadStatus: string;
 	media?: Media;
 	verify: Record<string, Verify | 'running'>;
+	music?: Music;
+	tiktokModes?: Record<string, 'inbox' | 'direct'>;
 	onVerify: (a: Account) => void;
 	onFix: (a: Account, fix: Check['fix']) => void;
 }) {
-	const rows = props.chosen.map((a) => ({ a, checks: checksFor(a, { ...props, verify: props.verify[a.id] }) }));
+	const rows = props.chosen.map((a) => ({ a, checks: checksFor(a, { ...props, verify: props.verify[a.id], tiktokMode: props.tiktokModes?.[a.id] }) }));
 	const blocking = rows.reduce((n, r) => n + r.checks.filter((c) => c.kind === 'stop').length, 0);
 	return (
 		<div className="ready" aria-label="Publishing readiness">

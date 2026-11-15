@@ -9,6 +9,8 @@ export type Draft = {
 	settings: Record<string, Record<string, unknown>>;
 	tab: string | null;
 	previewAs: Platform;
+	/** Music choice for the copyright checks. Optional so older drafts still load. */
+	music?: 'none' | 'free' | 'song';
 	mediaId: string | null;
 	/** Reused on restore, so publishing a draft that already went out returns that post instead of a second one. */
 	key: string;

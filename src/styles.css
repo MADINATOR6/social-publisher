@@ -453,3 +453,5 @@ details.why p { margin: 6px 0 0; color: var(--ink-3); font-size: 11.5px; line-he
 .stats-notes { display: grid; gap: 6px; font-size: 12px; color: var(--ink-3); padding: 0 2px 8px; }
 .stats-notes div { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 @media (max-width: 720px) { .tops .trow { grid-template-columns: minmax(0, 1fr) 60px 60px 40px; } .tops .trow > :nth-child(4), .tops .trow > :nth-child(5) { display: none; } }
+
+.block.music .block-head{flex-wrap:wrap;gap:8px;margin-bottom:6px}

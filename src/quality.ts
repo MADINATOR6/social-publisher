@@ -34,3 +34,34 @@ export function qualityNotes(m: Media, platform: Platform): QualityNote[] {
 	if (platform === 'tiktok') out.push({ kind: 'info', text: 'When you finish the draft in TikTok, make sure its high-quality (HD) upload setting is on' });
 	return out;
 }
+
+/** What music the video carries, chosen by the owner in the composer. */
+export type Music = 'none' | 'free' | 'song';
+
+export const MUSIC_OPTIONS: { value: Music; label: string }[] = [
+	{ value: 'none', label: 'No music / my own' },
+	{ value: 'free', label: 'Royalty-free' },
+	{ value: 'song', label: 'Popular song' },
+];
+
+/**
+ * Copyright guidance per platform. None of the platforms lets an app add their licensed music
+ * library through the API, so the safe route for a popular song is: export the video without it,
+ * post, and add the song inside the platform's own app where that is possible.
+ */
+export function musicNotes(music: Music, m: Pick<Media, 'duration' | 'audioCodec'> | undefined, platform: Platform, tiktokMode: 'inbox' | 'direct' = 'inbox'): QualityNote[] {
+	if (m && m.audioCodec == null) return [{ kind: 'info', text: 'This video has no sound track, so there is nothing to claim' }];
+	if (music === 'none') return [];
+	if (music === 'free')
+		return [{ kind: 'info', text: 'Royalty-free music: if its licence asks for credit, put it in the caption or description. Even royalty-free tracks can get an automatic claim; keep the licence handy to dispute it' }];
+	const long = (m?.duration ?? 0) > 60;
+	if (platform === 'youtube')
+		return long
+			? [{ kind: 'warn', text: 'Over 1 minute with a copyrighted song: YouTube can block this Short in every country. Cut it to 60 seconds or less, or post without the song' }]
+			: [{ kind: 'warn', text: 'Copyrighted song: expect a Content ID claim (the song owner may take the ad money). To use it safely, export without the song and add it with Add sound in the YouTube app instead of posting here' }];
+	if (platform === 'instagram')
+		return [{ kind: 'warn', text: 'Copyrighted song: Instagram may mute the sound or block the Reel. Its music library cannot be added by apps; to use it, post this Reel from the Instagram app' }];
+	return tiktokMode === 'inbox'
+		? [{ kind: 'info', text: 'Safest for TikTok: export without the song, send it here, then add the song from Sounds when you finish the draft in TikTok' }]
+		: [{ kind: 'warn', text: 'Copyrighted song with Direct Post: TikTok may mute it. Use Inbox mode and add the song from Sounds in TikTok instead' }];
+}

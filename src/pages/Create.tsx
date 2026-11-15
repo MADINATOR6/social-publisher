@@ -3,6 +3,7 @@ import { api, ApiError, fmtBytes, fmtDur, has, PLATFORM_NAME, uploadVideo, type 
 import { Avatar, FieldError, Icon, PlatformMark, Seg, Toggle } from '../ui';
 import { clearDraft, loadDraft, saveDraft, takeRepost } from '../draft';
 import { issuesFor, Readiness, TIKTOK_INBOX_LABEL } from './Readiness';
+import { MUSIC_OPTIONS, type Music } from '../quality';
 import { PublishStatus } from './Results';
 import { AccountGroups } from './Groups';
 import { desktop } from '../desktop';
@@ -34,6 +35,7 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 	const abortRef = useRef<() => void>(() => {});
 	const [selected, setSelected] = useState<string[]>([]);
 	const [caption, setCaption] = useState('');
+	const [music, setMusic] = useState<Music>('none');
 	const [settings, setSettings] = useState<Record<string, Settings>>({});
 	const [tab, setTab] = useState<string | null>(null);
 	const [previewAs, setPreviewAs] = useState<Platform>('instagram');
@@ -120,6 +122,7 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 		setSettings(d.settings as Record<string, Settings>);
 		setTab(d.tab);
 		setPreviewAs(d.previewAs);
+		if (d.music === 'free' || d.music === 'song') setMusic(d.music);
 		setKey(d.key);
 		const when = new Date(d.savedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 		if (!d.mediaId) return setNotice({ tone: 'info', text: `Draft restored from ${when}.` });
@@ -140,9 +143,9 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 	// Save the draft shortly after each change (text, choices and the server media ID only).
 	useEffect(() => {
 		if (!hydrated.current || post || upload.status === 'restoring') return;
-		const t = setTimeout(() => saveDraft({ caption, selected, settings, tab, previewAs, mediaId: upload.media?.id ?? null, key }), 400);
+		const t = setTimeout(() => saveDraft({ caption, selected, settings, tab, previewAs, music, mediaId: upload.media?.id ?? null, key }), 400);
 		return () => clearTimeout(t);
-	}, [caption, selected, settings, tab, previewAs, upload.media?.id, key, post, upload.status]);
+	}, [caption, selected, settings, tab, previewAs, music, upload.media?.id, key, post, upload.status]);
 
 	useEffect(() => {
 		if (!post || post.done) return;
@@ -313,6 +316,7 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 		setPreview(null);
 		setUpload({ progress: 0, status: 'idle' });
 		setCaption('');
+		setMusic('none');
 		setIssues([]);
 		setAttempted(false);
 		setPost(null);
@@ -476,6 +480,23 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 					)}
 
 					{!post && chosen.length > 0 && (
+						<div className="block music">
+							<div className="block-head">
+								<h3>Music</h3>
+								<span className="grow" />
+								<Seg label="Music in this video" value={music} onChange={(v) => setMusic(v)} options={MUSIC_OPTIONS.map((o) => ({ ...o, disabled: locked }))} />
+							</div>
+							<p className="hint" style={{ margin: 0 }}>
+								{music === 'song'
+									? 'Copyright-safe way: export the video without the song (keep your game sounds and voice), post it here, then add the song inside the app where you can. The checks below say what each platform allows.'
+									: music === 'free'
+										? 'Music you have a licence for. Keep the licence in case a platform flags it.'
+										: 'Only your own sounds, game audio or voice. Nothing to claim.'}
+							</p>
+						</div>
+					)}
+
+					{!post && chosen.length > 0 && (
 						<div className="block">
 							<Readiness
 								chosen={chosen}
@@ -484,6 +505,8 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 								uploadStatus={upload.status}
 								media={media}
 								verify={verify}
+								music={music}
+								tiktokModes={Object.fromEntries(chosen.filter((a) => a.platform === 'tiktok').map((a) => [a.id, (settings[a.id]?.mode as 'inbox' | 'direct') ?? 'inbox']))}
 								onVerify={checkConnection}
 								onFix={(a, fix) => (fix === 'accounts' ? go('/accounts') : fix === 'video' ? chooseFile() : (setTab(a.id), setPreviewAs(a.platform)))}
 							/>
