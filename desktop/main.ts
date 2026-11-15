@@ -16,6 +16,8 @@ app.setName(APP_NAME);
 const userData = app.getPath('userData'); // ~/Library/Application Support/Publisher
 const dataDir = path.join(userData, 'data');
 const logsDir = path.join(userData, 'logs');
+/** Where the owner's Claude sessions drop finished videos (the API process watches it). */
+const inboxDir = path.join(app.getPath('home'), 'Movies', 'Publisher Inbox');
 const settingsFile = path.join(userData, 'settings.json');
 const res = (...p: string[]) => (app.isPackaged ? path.join(process.resourcesPath, ...p) : path.join(app.getAppPath(), 'build', 'resources', ...p));
 const bundled = (...p: string[]) => path.join(app.getAppPath(), ...p);
@@ -106,6 +108,7 @@ function serviceEnv(): Record<string, string> {
 		SESSION_SECRET: keys!.sessionSecret,
 		TOKEN_ENCRYPTION_KEY: keys!.tokenKey,
 		DATA_DIR: dataDir,
+		INBOX_DIR: inboxDir,
 		API_PORT: String(port),
 		APP_URL: origin,
 		UI_DIST: bundled('dist'),
@@ -291,6 +294,11 @@ function registerIpc() {
 	ipcMain.handle('reveal-logs', async (e) => {
 		if (fromApp(e)) await shell.openPath(logsDir);
 	});
+	ipcMain.handle('reveal-inbox', async (e) => {
+		if (!fromApp(e)) return;
+		fs.mkdirSync(inboxDir, { recursive: true });
+		await shell.openPath(inboxDir);
+	});
 	ipcMain.handle('services', async (e) => {
 		if (!fromApp(e)) return null;
 		return { version: app.getVersion(), api: svcs.api.state, worker: svcs.worker.state, logsDir, dataDir, port };
@@ -355,6 +363,7 @@ function buildMenu() {
 				role: 'help',
 				submenu: [
 					{ label: 'Reveal Logs in Finder', click: () => shell.openPath(logsDir) },
+					{ label: 'Reveal Inbox Folder in Finder', click: () => (fs.mkdirSync(inboxDir, { recursive: true }), shell.openPath(inboxDir)) },
 					{ label: 'Reveal Data Folder in Finder', click: () => shell.openPath(userData) },
 				],
 			},

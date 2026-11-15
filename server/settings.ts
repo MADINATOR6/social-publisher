@@ -9,7 +9,7 @@ export const FIELDS: Record<Platform, { id: string; secret: string; idLabel: str
 	instagram: { id: 'INSTAGRAM_APP_ID', secret: 'INSTAGRAM_APP_SECRET', idLabel: 'App ID', secretLabel: 'App secret' },
 	tiktok: { id: 'TIKTOK_CLIENT_KEY', secret: 'TIKTOK_CLIENT_SECRET', idLabel: 'Client key', secretLabel: 'Client secret' },
 };
-const ALLOWED = new Set([...Object.values(FIELDS).flatMap((f) => [f.id, f.secret]), 'PUBLIC_BASE_URL', 'NOTIFY', 'INSTAGRAM_CONFIG_ID', 'INSTAGRAM_LOGIN']);
+const ALLOWED = new Set([...Object.values(FIELDS).flatMap((f) => [f.id, f.secret]), 'PUBLIC_BASE_URL', 'NOTIFY', 'INSTAGRAM_CONFIG_ID', 'INSTAGRAM_LOGIN', 'DRAFTS_ONLY']);
 
 let cache: { at: number; values: Map<string, string> } | null = null;
 
@@ -29,6 +29,9 @@ function load(): Map<string, string> {
 }
 
 overrides.get = (key: string) => load().get(key);
+
+/** Drafts only (on unless the owner turned it off): nothing Publisher sends can go public by itself. */
+export const draftsOnly = () => overrides.get('DRAFTS_ONLY') !== 'off';
 
 export function saveSettings(values: Record<string, string | null>) {
 	const db = getDb();

@@ -7,7 +7,7 @@ import { getDb } from '../server/db.js';
 import { claimNext, finish, getTarget, postView } from '../server/jobs.js';
 import { runTarget } from '../server/runner.js';
 import { afterTarget, summarize } from '../server/notify.js';
-import { resetSettingsCache } from '../server/settings.js';
+import { resetSettingsCache, saveSettings } from '../server/settings.js';
 import { freshDb, instantSleep, seedAccount, seedMedia } from './helpers.js';
 
 let app: FastifyInstance;
@@ -40,7 +40,7 @@ const YT = { title: 'T', privacy: 'private', madeForKids: false };
 
 describe('feature list', () => {
 	it('lists the extras the Node server provides; notifications only inside the desktop app', async () => {
-		expect((await get('/api/config')).json().features).toEqual(['schedule', 'markPosted', 'repost', 'covers', 'analytics', 'groups']);
+		expect((await get('/api/config')).json().features).toEqual(['schedule', 'markPosted', 'repost', 'covers', 'analytics', 'groups', 'draftsOnly']);
 	});
 });
 
@@ -99,6 +99,7 @@ describe('cover images', () => {
 	});
 
 	it('checks covers per platform before saving the post', async () => {
+		saveSettings({ DRAFTS_ONLY: 'off' }); // Instagram is refused while drafts only is on
 		const png = (await putCover(PNG())).json().id;
 		const tt = await publish('tiktok', { mode: 'inbox', coverId: png });
 		expect(tt.statusCode).toBe(422);
@@ -138,9 +139,9 @@ describe('finish notices', () => {
 	});
 
 	it('remembers the on/off preference', async () => {
-		expect((await get('/api/desktop/prefs')).json()).toEqual({ notifications: true });
+		expect((await get('/api/desktop/prefs')).json()).toEqual({ notifications: true, draftsOnly: true });
 		const off = await app.inject({ method: 'PUT', url: '/api/desktop/prefs', payload: { notifications: false }, headers: { cookie, ...H } });
-		expect(off.json()).toEqual({ notifications: false });
+		expect(off.json()).toEqual({ notifications: false, draftsOnly: true });
 		resetSettingsCache();
 		const p = (await publish('youtube', YT)).json().post;
 		finish(p.targets[0].id, 'published', {});

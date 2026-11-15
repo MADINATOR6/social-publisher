@@ -9,6 +9,8 @@ type Bridge = {
 	pickVideo(onProgress: (p: number) => void): Promise<PickResult>;
 	openExternal(url: string): Promise<boolean>;
 	revealLogs(): Promise<void>;
+	/** Mac app: opens the inbox folder in Finder. */
+	revealInbox?(): Promise<void>;
 	services(): Promise<Services>;
 };
 

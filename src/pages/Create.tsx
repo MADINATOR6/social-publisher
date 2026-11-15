@@ -49,6 +49,8 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 	const [key, setKey] = useState(newKey);
 	const canSchedule = has(config, 'schedule');
 	const canCover = has(config, 'covers');
+	/** Drafts only: YouTube goes up Private, TikTok to the inbox, Instagram is not offered. */
+	const drafts = has(config, 'draftsOnly') && config.draftsOnly !== false;
 	const [scheduleOn, setScheduleOn] = useState(false);
 	const [when, setWhen] = useState(() => toLocalInput(nextHalfHour()));
 	const whenMs = new Date(when).getTime();
@@ -243,9 +245,10 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 				else if (!info.available) out.push({ accountId: a.id, field: `account.${a.id}`, message: info.note });
 				if (a.platform === 'instagram' && !config.publicBaseUrl && !config.videoHosting) out.push({ accountId: a.id, field: `account.${a.id}`, message: 'Set a public HTTPS address in Connected accounts so Instagram can download the video.' });
 			}
+			if (drafts && a.platform === 'instagram') out.push({ accountId: a.id, field: `target.${a.id}`, message: 'Drafts only is on, and Instagram has no drafts for apps. Post this Reel from the Instagram app, or click Drafts only at the top to allow public posts.' });
 			if (a.platform === 'youtube') {
 				if (!String(s.title ?? '').trim()) out.push({ accountId: a.id, field: 'youtube.title', message: 'Add a title.' });
-				if (!s.privacy) out.push({ accountId: a.id, field: 'youtube.privacy', message: 'Choose who can see it.' });
+				if (!drafts && !s.privacy) out.push({ accountId: a.id, field: 'youtube.privacy', message: 'Choose who can see it.' });
 				if (typeof s.madeForKids !== 'boolean') out.push({ accountId: a.id, field: 'youtube.madeForKids', message: 'YouTube requires an answer.' });
 			}
 			for (const m of upload.media?.issues[a.platform] ?? []) out.push({ accountId: a.id, field: `media.${a.platform}`, message: `${PLATFORM_NAME[a.platform]}: ${m}` });
@@ -293,7 +296,7 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 					if (a.platform === 'tiktok') return { accountId: a.id, settings: { ...common, mode: s.mode, privacy: s.privacy, allowComments: s.allowComments, allowDuet: s.allowDuet, allowStitch: s.allowStitch } };
 					const cover = canCover && s.coverId ? { coverId: s.coverId } : {};
 					if (a.platform === 'instagram') return { accountId: a.id, settings: { ...common, ...cover, shareToFeed: s.shareToFeed, thumbOffsetMs: s.thumbSec === '' ? null : Math.round(Number(s.thumbSec) * 1000) } };
-					return { accountId: a.id, settings: { ...cover, title: s.title, description: s.description || caption, privacy: s.privacy, madeForKids: s.madeForKids, categoryId: s.categoryId } };
+					return { accountId: a.id, settings: { ...cover, title: s.title, description: s.description || caption, privacy: drafts ? 'private' : s.privacy, madeForKids: s.madeForKids, categoryId: s.categoryId } };
 				}),
 			});
 			setPost(r.post);
@@ -475,7 +478,7 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 									</button>
 								))}
 							</div>
-							<PlatformFields a={activeTab} s={settings[activeTab.id] ?? defaults(activeTab.platform, filename)} set={(p) => set(activeTab.id, p)} issues={issues.filter((i) => !i.accountId || i.accountId === activeTab.id)} info={config.platforms[activeTab.platform]} caption={caption} media={media} locked={locked} canCover={canCover} />
+							<PlatformFields a={activeTab} s={settings[activeTab.id] ?? defaults(activeTab.platform, filename)} set={(p) => set(activeTab.id, p)} issues={issues.filter((i) => !i.accountId || i.accountId === activeTab.id)} info={config.platforms[activeTab.platform]} caption={caption} media={media} locked={locked} canCover={canCover} drafts={drafts} />
 						</div>
 					)}
 
@@ -549,7 +552,7 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 	);
 }
 
-function PlatformFields({ a, s, set, issues, info, caption, media, locked, canCover = false }: { a: Account; s: Settings; set: (p: Settings) => void; issues: Issue[]; info: Config['platforms'][Platform]; caption: string; media?: Media; locked: boolean; canCover?: boolean }) {
+function PlatformFields({ a, s, set, issues, info, caption, media, locked, canCover = false, drafts = false }: { a: Account; s: Settings; set: (p: Settings) => void; issues: Issue[]; info: Config['platforms'][Platform]; caption: string; media?: Media; locked: boolean; canCover?: boolean; drafts?: boolean }) {
 	return (
 		<div className="fields" role="tabpanel">
 			<FieldError issues={issues} field={`media.${a.platform}`} />
@@ -621,7 +624,11 @@ function PlatformFields({ a, s, set, issues, info, caption, media, locked, canCo
 					<div className="grid2">
 						<div>
 							<div className="label" style={{ marginBottom: 6 }}>Visibility</div>
-							<Seg label="YouTube visibility" value={s.privacy} onChange={(v) => set({ privacy: v })} options={[{ value: 'public', label: 'Public' }, { value: 'unlisted', label: 'Unlisted' }, { value: 'private', label: 'Private' }].map((o) => ({ ...o, disabled: locked }))} />
+							{drafts ? (
+								<div className="hint" style={{ margin: 0 }}><b>Private</b> (drafts only). Make it public in YouTube Studio when you're ready.</div>
+							) : (
+								<Seg label="YouTube visibility" value={s.privacy} onChange={(v) => set({ privacy: v })} options={[{ value: 'public', label: 'Public' }, { value: 'unlisted', label: 'Unlisted' }, { value: 'private', label: 'Private' }].map((o) => ({ ...o, disabled: locked }))} />
+							)}
 							<FieldError issues={issues} field="youtube.privacy" />
 						</div>
 						<div>

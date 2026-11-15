@@ -22,6 +22,15 @@ function NotifyToggle() {
 	);
 }
 
+/** Drafts only: YouTube goes up Private and TikTok to the inbox, so nothing goes public by itself. */
+function DraftsToggle({ on, changed }: { on: boolean; changed: () => void }) {
+	return (
+		<button className={`ghost-link ${on ? 'drafts-on' : ''}`} aria-pressed={on} title={on ? 'Drafts only: YouTube uploads as Private, TikTok goes to your inbox, Instagram is skipped. Nothing goes public by itself (click to allow public posts)' : 'Public posting is allowed (click to switch back to drafts only)'} onClick={async () => (await api.setPrefs({ draftsOnly: !on }), changed())}>
+			<Icon.check /> <span>{on ? 'Drafts only' : 'Public allowed'}</span>
+		</button>
+	);
+}
+
 function SoundToggle() {
 	const [, redraw] = useState(0);
 	useEffect(() => sounds.subscribe(() => redraw((n) => n + 1)), []);
@@ -146,6 +155,7 @@ function App() {
 					{session.noSignIn && <span className="chip warn signin-off" title="Password protection is off (NO_SIGN_IN=true). Only this computer can open the app. Turn sign-in back on before sharing or tunnelling it.">Sign-in off · local only</span>}
 					<WorkerStatus status={status} inFlight={inFlight} desktop={Boolean(session.desktop)} />
 					<SoundToggle />
+					{has(config, 'draftsOnly') && <DraftsToggle on={config?.draftsOnly !== false} changed={() => api.config().then(setConfig).catch(() => undefined)} />}
 					{has(config, 'notifications') && <NotifyToggle />}
 					{!session.noSignIn && !session.desktop && <button className="ghost-link" aria-label="Sign out" onClick={async () => (await api.signOut(), location.reload())}><Icon.out /> <span>Sign out</span></button>}
 				</div>

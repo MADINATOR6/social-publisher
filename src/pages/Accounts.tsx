@@ -3,6 +3,7 @@ import { computer, desktop, openSignIn } from '../desktop';
 import { has, api, ApiError, fmtTime, PLATFORM_NAME, type Account, type IgLogin, type Config, type Issue, type Platform, type Setup } from '../api';
 import { Avatar, FieldError, Icon, PlatformMark, Seg } from '../ui';
 import { GroupsManager } from './GroupsManager';
+import { InboxPanel } from './InboxPanel';
 
 type Step = { text: React.ReactNode; link?: [string, string] };
 
@@ -345,6 +346,7 @@ export function AccountsPage({ accounts, config, refresh, refreshConfig }: { acc
 				);
 			})}
 			{has(config, 'groups') && <GroupsManager accounts={accounts} />}
+			{has(config, 'inbox') && <InboxPanel />}
 			<p className="faint" style={{ fontSize: 12 }}>
 				{anyHosted
 					? <>Accounts connect through each platform’s official sign-in page. This app never sees your passwords, and sign-in tokens stay encrypted on this {computer}.</>

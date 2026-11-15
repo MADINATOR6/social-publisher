@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../server/app.js';
 import { getDb } from '../server/db.js';
 import { config } from '../server/config.js';
+import { saveSettings } from '../server/settings.js';
 import { freshDb, seedAccount, seedMedia } from './helpers.js';
 
 let app: FastifyInstance;
@@ -71,6 +72,7 @@ describe('tokens', () => {
 
 describe('publishing validation', () => {
 	it('explains each problem next to the right field', async () => {
+		saveSettings({ DRAFTS_ONLY: 'off' }); // with drafts only, privacy is forced and Instagram refused
 		const m = seedMedia(1024 * 1024, { duration: 1 });
 		const yt = seedAccount('youtube');
 		const ig = seedAccount('instagram');

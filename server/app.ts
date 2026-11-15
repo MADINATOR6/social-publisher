@@ -18,12 +18,24 @@ import { clean as cleanGroup, createGroup, deleteGroup, listGroups, updateGroup 
 import { enabled as notifyEnabled } from './notify.js';
 import { LIMITS, isShortsShape, probe, validateMedia, VIDEO_MIME, type Issue } from './media.js';
 import { ADAPTERS, adapterFor, PLATFORMS } from './platforms/index.js';
-import { checkKeys, FIELDS, saveSettings, setupView } from './settings.js';
+import { checkKeys, draftsOnly, FIELDS, saveSettings, setupView } from './settings.js';
+import { inboxStatus } from './inbox.js';
 import type { MediaRow } from './platforms/types.js';
 import { AuthError } from './platforms/types.js';
 
 /** Extras shared with the Windows build that the Node server provides too. */
-const FEATURES = ['schedule', 'markPosted', 'repost', 'covers', 'analytics', 'groups'];
+const FEATURES = ['schedule', 'markPosted', 'repost', 'covers', 'analytics', 'groups', 'draftsOnly'];
+
+/**
+ * Drafts only: YouTube uploads as Private and TikTok goes to the inbox, so the owner publishes each
+ * one by hand. Instagram has no drafts in its API, so it is refused.
+ */
+export function asDraft(platform: Platform, s: Record<string, unknown>): Record<string, unknown> | null {
+	if (platform === 'youtube') return { ...s, privacy: 'private' };
+	if (platform === 'tiktok') return { ...s, mode: 'inbox', privacy: 'SELF_ONLY' };
+	return null;
+}
+export const DRAFTS_INSTAGRAM = 'Drafts only is on, and Instagram has no drafts for apps. Post this Reel from the Instagram app, or turn off Drafts only.';
 const SESSION = 'sp_session';
 const DESKTOP = 'sp_desktop';
 const OAUTH = 'sp_oauth';
@@ -110,7 +122,8 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
 		demoMode: config.demoMode,
 		publicBaseUrl: Boolean(config.publicBaseUrl),
 		// Extras shared with the Windows build. The UI shows a feature only when it is listed here.
-		features: [...FEATURES, ...(config.desktop ? ['notifications'] : [])],
+		features: [...FEATURES, ...(config.desktop ? ['notifications', 'inbox'] : [])],
+		draftsOnly: draftsOnly(),
 		platforms: Object.fromEntries(PLATFORMS.map((p) => [p, { configured: configured[p](), ...ADAPTERS[p].availability(), limits: LIMITS[p] }])),
 	}));
 
@@ -332,14 +345,23 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
 			if (demo === null) demo = Boolean(a.is_demo);
 			if (demo !== Boolean(a.is_demo)) issues.push({ field: `target.${a.id}`, message: 'Demo accounts and real accounts cannot be in the same post.' });
 			if (a.status === 'reconnect_required') issues.push({ field: `target.${a.id}`, message: `Reconnect ${a.display_name} before publishing.` });
+			let settings = t.settings;
+			if (draftsOnly()) {
+				const d = asDraft(a.platform, settings);
+				if (!d) {
+					issues.push({ field: `target.${a.id}`, message: DRAFTS_INSTAGRAM });
+					continue;
+				}
+				settings = d;
+			}
 			const adapter = adapterFor(a.platform, Boolean(a.is_demo));
 			const av = adapter.availability();
 			if (!av.available) issues.push({ field: `target.${a.id}`, message: av.note });
-			const caption = String(t.settings.captionOverride ?? '').trim() || body.caption;
-			for (const i of [...validateMedia(a.platform, { ...mediaInfo(media), mime: media.mime, filename: media.filename }), ...adapter.validateSettings(t.settings, caption, mediaInfo(media)), ...covers.issues(a.platform, t.settings)]) {
+			const caption = String(settings.captionOverride ?? '').trim() || body.caption;
+			for (const i of [...validateMedia(a.platform, { ...mediaInfo(media), mime: media.mime, filename: media.filename }), ...adapter.validateSettings(settings, caption, mediaInfo(media)), ...covers.issues(a.platform, settings)]) {
 				issues.push({ field: i.field === 'media' ? `media.${a.platform}` : i.field, message: i.message });
 			}
-			targets.push({ accountId: a.id, platform: a.platform, settings: t.settings });
+			targets.push({ accountId: a.id, platform: a.platform, settings });
 		}
 		if (issues.length) return reply.code(422).send({ error: 'Fix the highlighted fields before publishing.', issues });
 		const r = createPost({ idempotencyKey: body.idempotencyKey, mediaId: media.id, caption: body.caption, isDemo: Boolean(demo), targets, scheduledAt: body.scheduledAt ?? null });
@@ -416,12 +438,17 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
 	});
 
 	// ---------- desktop preferences ----------
-	app.get('/api/desktop/prefs', async () => ({ notifications: notifyEnabled() }));
+	const prefs = () => ({ notifications: notifyEnabled(), draftsOnly: draftsOnly() });
+	app.get('/api/desktop/prefs', async () => prefs());
 	app.put('/api/desktop/prefs', async (req) => {
-		const on = (req.body as any)?.notifications;
-		if (typeof on === 'boolean') saveSettings({ NOTIFY: on ? null : 'off' });
-		return { notifications: notifyEnabled() };
+		const b = (req.body as any) ?? {};
+		if (typeof b.notifications === 'boolean') saveSettings({ NOTIFY: b.notifications ? null : 'off' });
+		if (typeof b.draftsOnly === 'boolean') saveSettings({ DRAFTS_ONLY: b.draftsOnly ? null : 'off' });
+		return prefs();
 	});
+
+	// ---------- inbox folder (videos dropped by the owner's Claude sessions) ----------
+	app.get('/api/inbox', async () => inboxStatus());
 
 	// ---------- built UI ----------
 	const dist = config.uiDist;

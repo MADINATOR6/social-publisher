@@ -5,7 +5,10 @@ export type Account = { id: string; platform: Platform; displayName: string; han
 /** `hosted`: connects with one click through the app's sign-in service (Windows build only; absent elsewhere). */
 export type PlatformInfo = { configured: boolean; hosted?: boolean; available: boolean; mode: string; note: string; limits: { note: string } };
 /** `videoHosting`: Instagram can download videos from the sign-in service's temporary storage (Windows build only). */
-export type Config = { demoMode: boolean; publicBaseUrl: boolean; videoHosting?: boolean; features?: string[]; platforms: Record<Platform, PlatformInfo> };
+export type Config = { demoMode: boolean; publicBaseUrl: boolean; videoHosting?: boolean; features?: string[]; draftsOnly?: boolean; platforms: Record<Platform, PlatformInfo> };
+/** The inbox folder that turns dropped videos into drafts (Mac app). */
+export type Inbox = { enabled: boolean; dir: string; recent: { name: string; at: number; status: 'sent' | 'failed' | 'working'; message: string; postId?: string }[] };
+export type Prefs = { notifications: boolean; draftsOnly?: boolean };
 /** Whether the backend offers a feature beyond the original contract (the Windows build lists them; the Mac server lists none). */
 export const has = (c: Config | null | undefined, feature: string) => Boolean(c?.features?.includes(feature));
 export type Media = { id: string; filename: string; size: number; duration: number | null; width: number | null; height: number | null; videoCodec: string | null; audioCodec: string | null; fps?: number | null; shortsShape: boolean; issues: Record<Platform, string[]>; previewUrl?: string };
@@ -100,8 +103,9 @@ export const api = {
 		return data as { id: string; mime: string; size: number; width: number | null; height: number | null; url: string };
 	},
 	analytics: (days: number, fresh = false) => call<StatsReport>('GET', `/api/analytics?days=${days}${fresh ? '&fresh=1' : ''}`),
-	prefs: () => call<{ notifications: boolean }>('GET', '/api/desktop/prefs'),
-	setPrefs: (p: { notifications: boolean }) => call<{ notifications: boolean }>('PUT', '/api/desktop/prefs', p),
+	prefs: () => call<Prefs>('GET', '/api/desktop/prefs'),
+	setPrefs: (p: Partial<Prefs>) => call<Prefs>('PUT', '/api/desktop/prefs', p),
+	inbox: () => call<Inbox>('GET', '/api/inbox'),
 	cancelSchedule: (id: string) => call<{ post: Post }>('POST', `/api/posts/${id}/cancel`, {}),
 };
 
