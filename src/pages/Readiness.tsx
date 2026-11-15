@@ -9,7 +9,7 @@ export const TIKTOK_INBOX_LABEL = 'Send to TikTok inbox — finish posting in Ti
 
 /** Issues for one destination: fields on its tab, its caption, media limits and account problems. */
 export const issuesFor = (a: Account, issues: Issue[]) =>
-	issues.filter((i) => i.field.startsWith(`${a.platform}.`) || i.field === `caption.${a.platform}` || i.field === `media.${a.platform}` || i.field === `target.${a.id}`);
+	issues.filter((i) => (i.accountId ? i.accountId === a.id : i.field.startsWith(`${a.platform}.`) || i.field === `caption.${a.platform}` || i.field === `media.${a.platform}` || i.field === `target.${a.id}`));
 
 export function checksFor(a: Account, o: { config: Config; issues: Issue[]; uploadStatus: string; media?: Media; verify?: Verify | 'running' }): Check[] {
 	const info = o.config.platforms[a.platform];
@@ -35,7 +35,8 @@ export function checksFor(a: Account, o: { config: Config; issues: Issue[]; uplo
 		if (mediaIssues.length) mediaIssues.forEach((i) => out.push({ kind: 'stop', text: i.message.replace(`${PLATFORM_NAME[a.platform]}: `, ''), fix: 'tab' }));
 		else out.push({ kind: 'ok', text: 'Video passes local checks' });
 	}
-	const fieldIssues = mine.filter((i) => i.field !== `media.${a.platform}` && !(i.field === `target.${a.id}` && a.status === 'reconnect_required'));
+	// Account problems (keys, reconnect, public address) already have their own lines above.
+	const fieldIssues = mine.filter((i) => i.field !== `media.${a.platform}` && !i.field.startsWith('account.') && !(i.field === `target.${a.id}` && a.status === 'reconnect_required'));
 	if (fieldIssues.length) fieldIssues.forEach((i) => out.push({ kind: 'stop', text: i.message, fix: i.field.startsWith('target.') ? 'accounts' : 'tab' }));
 	else out.push({ kind: 'ok', text: a.platform === 'youtube' ? 'Title, visibility and audience set' : 'Caption within limits' });
 	if (a.platform === 'tiktok') out.push({ kind: 'info', text: info.mode === 'direct' ? 'Direct Post: private (Only me) posts only' : TIKTOK_INBOX_LABEL });

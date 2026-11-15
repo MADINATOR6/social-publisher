@@ -148,3 +148,26 @@ describe('finish notices', () => {
 		expect(getDb().prepare('SELECT notified_at FROM posts WHERE id = ?').get(p.id)).not.toMatchObject({ notified_at: null });
 	});
 });
+
+describe('several accounts per platform', () => {
+	it('always offers an account choice when signing in', async () => {
+		const { ADAPTERS } = await import('../server/platforms/index.js');
+		expect(ADAPTERS.youtube.authorizeUrl('s', 'c')).toContain('prompt=select_account+consent');
+		expect(ADAPTERS.tiktok.authorizeUrl('s', 'c')).toContain('disable_auto_auth=1');
+		expect(ADAPTERS.instagram.authorizeUrl('s', 'c')).toContain('force_reauth=true');
+	});
+
+	it('keeps two channels on one platform as separate accounts and posts to both with their own settings', async () => {
+		const a = seedAccount('youtube', { externalId: 'UC-one' });
+		const b = seedAccount('youtube', { externalId: 'UC-two' });
+		expect(a.id).not.toBe(b.id);
+		const accts = (await get('/api/accounts')).json().filter((x: any) => x.platform === 'youtube');
+		expect(accts).toHaveLength(2);
+		const m = seedMedia(3 * 1024 * 1024);
+		const r = await post('/api/posts', { idempotencyKey: `k-${Math.random()}`, mediaId: m, caption: 'two channels', targets: [{ accountId: a.id, settings: { ...YT, title: 'First' } }, { accountId: b.id, settings: { ...YT, title: 'Second', privacy: 'unlisted' } }] });
+		expect(r.statusCode).toBe(200);
+		const ts = r.json().post.targets;
+		expect(ts).toHaveLength(2);
+		expect(ts.map((t: any) => t.settings.title).sort()).toEqual(['First', 'Second']);
+	});
+});

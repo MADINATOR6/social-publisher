@@ -220,20 +220,20 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 		for (const a of chosen) {
 			const s = settings[a.id] ?? {};
 			const cap = s.overrideOn && s.captionOverride.trim() ? s.captionOverride : caption;
-			if (a.platform !== 'youtube' && cap.length > 2200) out.push({ field: `caption.${a.platform}`, message: `${PLATFORM_NAME[a.platform]} captions are limited to 2,200 characters.` });
-			if (a.status === 'reconnect_required') out.push({ field: `account.${a.id}`, message: `Reconnect ${a.displayName} in Connected accounts first.` });
+			if (a.platform !== 'youtube' && cap.length > 2200) out.push({ accountId: a.id, field: `caption.${a.platform}`, message: `${PLATFORM_NAME[a.platform]} captions are limited to 2,200 characters.` });
+			if (a.status === 'reconnect_required') out.push({ accountId: a.id, field: `account.${a.id}`, message: `Reconnect ${a.displayName} in Connected accounts first.` });
 			if (!a.isDemo) {
 				const info = config.platforms[a.platform];
-				if (!info.configured) out.push({ field: `account.${a.id}`, message: `Add ${PLATFORM_NAME[a.platform]} app keys in Connected accounts.` });
-				else if (!info.available) out.push({ field: `account.${a.id}`, message: info.note });
-				if (a.platform === 'instagram' && !config.publicBaseUrl && !config.videoHosting) out.push({ field: `account.${a.id}`, message: 'Set a public HTTPS address in Connected accounts so Instagram can download the video.' });
+				if (!info.configured) out.push({ accountId: a.id, field: `account.${a.id}`, message: `Add ${PLATFORM_NAME[a.platform]} app keys in Connected accounts.` });
+				else if (!info.available) out.push({ accountId: a.id, field: `account.${a.id}`, message: info.note });
+				if (a.platform === 'instagram' && !config.publicBaseUrl && !config.videoHosting) out.push({ accountId: a.id, field: `account.${a.id}`, message: 'Set a public HTTPS address in Connected accounts so Instagram can download the video.' });
 			}
 			if (a.platform === 'youtube') {
-				if (!String(s.title ?? '').trim()) out.push({ field: 'youtube.title', message: 'Add a title.' });
-				if (!s.privacy) out.push({ field: 'youtube.privacy', message: 'Choose who can see it.' });
-				if (typeof s.madeForKids !== 'boolean') out.push({ field: 'youtube.madeForKids', message: 'YouTube requires an answer.' });
+				if (!String(s.title ?? '').trim()) out.push({ accountId: a.id, field: 'youtube.title', message: 'Add a title.' });
+				if (!s.privacy) out.push({ accountId: a.id, field: 'youtube.privacy', message: 'Choose who can see it.' });
+				if (typeof s.madeForKids !== 'boolean') out.push({ accountId: a.id, field: 'youtube.madeForKids', message: 'YouTube requires an answer.' });
 			}
-			for (const m of upload.media?.issues[a.platform] ?? []) out.push({ field: `media.${a.platform}`, message: `${PLATFORM_NAME[a.platform]}: ${m}` });
+			for (const m of upload.media?.issues[a.platform] ?? []) out.push({ accountId: a.id, field: `media.${a.platform}`, message: `${PLATFORM_NAME[a.platform]}: ${m}` });
 		}
 		return out;
 	}
@@ -450,12 +450,13 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 								{chosen.map((a) => (
 									<button key={a.id} role="tab" aria-selected={activeTab.id === a.id} className={`ptab ${activeTab.id === a.id ? 'on' : ''}`} onClick={() => (setTab(a.id), setPreviewAs(a.platform))}>
 										<PlatformMark p={a.platform} size={14} bare />
-										{PLATFORM_NAME[a.platform]}
+										{/* Two accounts on one platform: name the account so the tabs stay distinct. */}
+										{chosen.filter((x) => x.platform === a.platform).length > 1 ? <span className="ellipsis" style={{ maxWidth: 140 }}>{a.displayName}</span> : PLATFORM_NAME[a.platform]}
 										{platformHasIssue(a) && <span className="flag" aria-label="Needs attention" />}
 									</button>
 								))}
 							</div>
-							<PlatformFields a={activeTab} s={settings[activeTab.id] ?? defaults(activeTab.platform, filename)} set={(p) => set(activeTab.id, p)} issues={issues} info={config.platforms[activeTab.platform]} caption={caption} media={media} locked={locked} canCover={canCover} />
+							<PlatformFields a={activeTab} s={settings[activeTab.id] ?? defaults(activeTab.platform, filename)} set={(p) => set(activeTab.id, p)} issues={issues.filter((i) => !i.accountId || i.accountId === activeTab.id)} info={config.platforms[activeTab.platform]} caption={caption} media={media} locked={locked} canCover={canCover} />
 						</div>
 					)}
 

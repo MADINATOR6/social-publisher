@@ -84,7 +84,7 @@ export function HistoryPage({ posts, refresh, go, canRepost = false }: { posts: 
 										return t.permalink && !p.isDemo ? (
 											<a key={t.id} className="hdest" href={t.permalink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title={`Open on ${PLATFORM_NAME[t.platform]}`}>{inner}</a>
 										) : (
-											<span key={t.id} className="hdest" title={d.explain}>{inner}</span>
+											<span key={t.id} className="hdest" title={`${t.account.name}: ${d.explain}`}>{inner}</span>
 										);
 									})}
 								</div>

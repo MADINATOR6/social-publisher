@@ -40,6 +40,8 @@ export const instagram: Adapter = {
 			redirect_uri: redirectUri('instagram'),
 			response_type: 'code',
 			scope: 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights',
+			// Ask for the account's credentials even when Instagram is already signed in, so a second account can be added.
+			force_reauth: 'true',
 			state,
 		});
 		return `https://www.instagram.com/oauth/authorize?${q}`;

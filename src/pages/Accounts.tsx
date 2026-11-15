@@ -5,6 +5,13 @@ import { Avatar, FieldError, Icon, PlatformMark } from '../ui';
 
 type Step = { text: React.ReactNode; link?: [string, string] };
 
+/** What a second account on the same platform needs while the developer app is in testing. */
+const ADD_ANOTHER: Record<Platform, string> = {
+	youtube: 'Adding another channel: Google shows its account chooser. Each Google account must be a Test user on your consent screen (Audience), unless the app is published. Brand-account channels appear in the chooser under their Google account.',
+	instagram: 'Adding another account: Instagram asks you to sign in again. Each account must be Professional (Business or Creator) and added as an Instagram Tester in your Meta app (App roles → Roles), with the invite accepted in Instagram.',
+	tiktok: 'Adding another account: TikTok asks which account to use. While the app is in Sandbox, each account must be added as a target user in your TikTok developer app.',
+};
+
 const GUIDE: Record<Platform, { where: string; steps: (s: Setup['platforms'][Platform]) => Step[]; note?: string }> = {
 	youtube: {
 		where: 'Google Cloud',
@@ -250,6 +257,7 @@ export function AccountsPage({ accounts, config, refresh, refreshConfig }: { acc
 								<button className={`btn sm ${open || p !== firstUnset ? '' : 'primary'}`} onClick={() => setEditing(open ? null : p)}>{open ? 'Close' : 'Set up'}</button>
 							)}
 						</div>
+						{info.configured && !hosted && real.length > 0 && !open && <div className="hint pad add-hint">{ADD_ANOTHER[p]}</div>}
 						{p === 'instagram' && hosted && !real.length && !open && <div className="hint pad" style={{ paddingTop: 0 }}>Needs an Instagram Professional account (Business or Creator). You can switch for free in the Instagram app’s settings.</div>}
 						{info.configured && !hosted && !open && s && (
 							<div className="keyline">

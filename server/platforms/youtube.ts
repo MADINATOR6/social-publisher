@@ -40,7 +40,8 @@ export const youtube: Adapter = {
 			response_type: 'code',
 			scope: 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/yt-analytics.readonly',
 			access_type: 'offline',
-			prompt: 'consent',
+			// Always show Google's account chooser, so a second channel can be added instead of reusing the signed-in one.
+			prompt: 'select_account consent',
 			include_granted_scopes: 'true',
 			state,
 			code_challenge: challenge,
