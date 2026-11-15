@@ -214,6 +214,19 @@ details.why p { margin: 6px 0 0; color: var(--ink-3); font-size: 11.5px; line-he
 .block-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .block-head h3 { margin: 0; font-size: 13px; font-weight: 650; }
 .block-head .note { color: var(--ink-3); font-size: 12px; }
+.groups { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; align-items: center; }
+.gchip { display: inline-flex; align-items: center; height: 28px; border-radius: 99px; border: 1px solid var(--line-2); background: var(--s2); font-size: 12px; color: var(--ink-2); overflow: hidden; transition: border-color 0.15s, background 0.15s; }
+.gchip > button { display: inline-flex; align-items: center; gap: 6px; height: 100%; padding: 0 11px; background: none; border: 0; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+.gchip > button svg { width: 13px; height: 13px; }
+.gchip small { font-size: 10.5px; font-weight: 600; color: var(--ink-3); background: var(--s4); border-radius: 99px; padding: 1px 6px; }
+.gchip:hover { border-color: var(--line-3, var(--line-2)); background: var(--s3); }
+.gchip.on { border-color: var(--ember); background: var(--ember-soft); color: #ffd6c6; }
+.gchip.on small { background: rgba(255, 107, 61, 0.25); color: #ffd6c6; }
+.gchip .gx { padding: 0 8px 0 2px; color: var(--ink-3); }
+.gchip .gx:hover { color: var(--bad); }
+.gchip.add { padding: 0 11px; font: inherit; font-size: 12px; font-weight: 600; color: var(--ink-3); border-style: dashed; cursor: pointer; }
+.gname { display: inline-flex; gap: 6px; align-items: center; }
+.gname .field { height: 28px; width: 160px; padding: 0 10px; font-size: 12px; }
 .dests { display: flex; flex-wrap: wrap; gap: 8px; }
 .dest { display: inline-flex; align-items: center; gap: 9px; height: 44px; padding: 0 12px 0 6px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--s2); cursor: pointer; transition: border-color 0.15s, background 0.15s, transform 0.1s; position: relative; text-align: left; }
 .dest:hover:not(:disabled) { border-color: rgba(255, 255, 255, 0.22); background: var(--s3); }

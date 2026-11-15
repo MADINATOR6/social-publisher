@@ -14,6 +14,7 @@ import { accessToken, disconnect, getAccount, listAccounts, markAccount, upsertA
 import { cancelScheduled, createPost, listPosts, markPosted, PLATFORM_LABEL, postView, reschedule, retryTargets, tiktokLink, validScheduleTime } from './jobs.js';
 import * as covers from './covers.js';
 import { report } from './analytics.js';
+import { clean as cleanGroup, createGroup, deleteGroup, listGroups, updateGroup } from './groups.js';
 import { enabled as notifyEnabled } from './notify.js';
 import { LIMITS, isShortsShape, probe, validateMedia, VIDEO_MIME, type Issue } from './media.js';
 import { ADAPTERS, adapterFor, PLATFORMS } from './platforms/index.js';
@@ -22,7 +23,7 @@ import type { MediaRow } from './platforms/types.js';
 import { AuthError } from './platforms/types.js';
 
 /** Extras shared with the Windows build that the Node server provides too. */
-const FEATURES = ['schedule', 'markPosted', 'repost', 'covers', 'analytics'];
+const FEATURES = ['schedule', 'markPosted', 'repost', 'covers', 'analytics', 'groups'];
 const SESSION = 'sp_session';
 const DESKTOP = 'sp_desktop';
 const OAUTH = 'sp_oauth';
@@ -372,6 +373,19 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
 		const m = covers.get((req.params as any).id);
 		return m ? sendFile(req, reply, m) : reply.code(404).send('Not found');
 	});
+
+	// ---------- saved account groups ----------
+	app.get('/api/groups', async () => listGroups());
+	app.post('/api/groups', async (req, reply) => {
+		const c = cleanGroup((req.body as any)?.name, (req.body as any)?.accountIds);
+		return c.ok ? createGroup(c.name, c.ids) : reply.code(422).send({ error: c.message });
+	});
+	app.put('/api/groups/:id', async (req, reply) => {
+		const c = cleanGroup((req.body as any)?.name, (req.body as any)?.accountIds);
+		if (!c.ok) return reply.code(422).send({ error: c.message });
+		return updateGroup((req.params as any).id, c.name, c.ids) ? listGroups() : reply.code(404).send({ error: 'Not found' });
+	});
+	app.delete('/api/groups/:id', async (req, reply) => (deleteGroup((req.params as any).id) ? listGroups() : reply.code(404).send({ error: 'Not found' })));
 
 	// ---------- stats ----------
 	app.get('/api/analytics', async (req) => {

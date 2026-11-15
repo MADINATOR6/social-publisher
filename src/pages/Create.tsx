@@ -4,6 +4,7 @@ import { Avatar, FieldError, Icon, PlatformMark, Seg, Toggle } from '../ui';
 import { clearDraft, loadDraft, saveDraft, takeRepost } from '../draft';
 import { issuesFor, Readiness, TIKTOK_INBOX_LABEL } from './Readiness';
 import { PublishStatus } from './Results';
+import { AccountGroups } from './Groups';
 import { desktop } from '../desktop';
 
 type Settings = Record<string, any>;
@@ -206,6 +207,17 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 		if (!on) {
 			setTab(a.id);
 			setPreviewAs(a.platform);
+		}
+		setIssues((is) => is.filter((i) => !i.field.startsWith('targets')));
+	}
+	/** Selects exactly the accounts in a group (only connected ones; blocked ones are left out). */
+	function applyGroup(ids: string[]) {
+		const pick = usable.filter((a) => ids.includes(a.id));
+		setSelected(pick.map((a) => a.id));
+		setSettings((s) => Object.fromEntries([...Object.entries(s), ...pick.filter((a) => !s[a.id]).map((a) => [a.id, defaults(a.platform, filename)])]));
+		if (pick[0]) {
+			setTab(pick[0].id);
+			setPreviewAs(pick[0].platform);
 		}
 		setIssues((is) => is.filter((i) => !i.field.startsWith('targets')));
 	}
@@ -412,6 +424,8 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 								<button className="btn sm primary" onClick={() => go('/accounts')}>Connect an account</button>
 							</div>
 						) : (
+							<>
+							<AccountGroups usable={usable} selected={selected} onApply={applyGroup} canSave={has(config, 'groups')} locked={locked} />
 							<div className="dests" role="group" aria-label="Destinations">
 								{usable.map((a) => {
 									const info = config.platforms[a.platform];
@@ -428,6 +442,7 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 									);
 								})}
 							</div>
+							</>
 						)}
 						<FieldError issues={issues} field="targets" />
 						{chosen.map((a) => <FieldError key={a.id} issues={issues} field={[`target.${a.id}`, `account.${a.id}`]} />)}

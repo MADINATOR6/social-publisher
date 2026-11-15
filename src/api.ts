@@ -12,6 +12,8 @@ export type Media = { id: string; filename: string; size: number; duration: numb
 export type Target = { id: string; platform: Platform; account: { name: string; handle: string | null; avatarUrl: string | null; isDemo: boolean }; settings: any; state: State; phase: string | null; progress: number; attempts: number; outcomeUnknown: boolean; accountStatus: string; nextRunAt: number | null; scheduled?: boolean; canMarkPosted?: boolean; accountId?: string; error: string | null; permalink: string | null; updatedAt: number; events: { at: number; message: string }[] };
 export type Post = { id: string; caption: string; isDemo: boolean; createdAt: number; scheduledAt?: number | null; scheduled?: boolean; media: { id?: string; filename: string; duration: number | null; width: number | null; height: number | null; size: number; deleted: boolean }; targets: Target[]; done: boolean };
 /** `accountId`: set by the composer's own checks, so two accounts on one platform keep their problems apart. */
+/** A saved set of accounts for "Post to" (Mac server feature `groups`). */
+export type Group = { id: string; name: string; accountIds: string[] };
 export type Issue = { field: string; message: string; accountId?: string };
 export type Status = { worker: { state: 'running' | 'stale' | 'never'; lastSeenAt: number | null; startedAt: number | null }; activeJobs: number; noSignIn: boolean; demoMode: boolean; now: number };
 export type Verify = { ok: boolean; simulated?: boolean; reconnect?: boolean; checkedAt: number; message: string };
@@ -76,6 +78,9 @@ export const api = {
 	status: () => call<Status>('GET', '/api/status'),
 	media: (id: string) => call<Media>('GET', `/api/media/${encodeURIComponent(id)}`),
 	beginOAuth: (p: Platform) => call<{ url: string }>('POST', `/api/oauth/${p}/begin`),
+	groups: () => call<Group[]>('GET', '/api/groups'),
+	createGroup: (name: string, accountIds: string[]) => call<Group>('POST', '/api/groups', { name, accountIds }),
+	deleteGroup: (id: string) => call<Group[]>('DELETE', `/api/groups/${id}`),
 	verify: (accountId: string) => call<Verify>('POST', `/api/accounts/${accountId}/verify`),
 	posts: () => call<Post[]>('GET', '/api/posts'),
 	post: (id: string) => call<Post>('GET', `/api/posts/${id}`),

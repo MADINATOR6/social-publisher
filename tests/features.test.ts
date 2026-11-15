@@ -40,7 +40,7 @@ const YT = { title: 'T', privacy: 'private', madeForKids: false };
 
 describe('feature list', () => {
 	it('lists the extras the Node server provides; notifications only inside the desktop app', async () => {
-		expect((await get('/api/config')).json().features).toEqual(['schedule', 'markPosted', 'repost', 'covers', 'analytics']);
+		expect((await get('/api/config')).json().features).toEqual(['schedule', 'markPosted', 'repost', 'covers', 'analytics', 'groups']);
 	});
 });
 
@@ -176,5 +176,21 @@ describe('cancelled sign-in', () => {
 	it('explains a cancelled Google sign-in in plain words', async () => {
 		const r = await app.inject({ method: 'GET', url: '/api/oauth/youtube/callback?error=access_denied&state=x' });
 		expect(decodeURIComponent(String(r.headers.location ?? r.body))).toContain('Back to safety');
+	});
+});
+
+describe('saved account groups', () => {
+	it('saves, lists and deletes a group, skipping accounts that were disconnected since', async () => {
+		const a = seedAccount('youtube', { externalId: 'UC-a' });
+		const b = seedAccount('youtube', { externalId: 'UC-b' });
+		const r = await post('/api/groups', { name: '  Main channels ', accountIds: [a.id, b.id, 'nope', a.id] });
+		expect(r.statusCode).toBe(200);
+		expect(r.json()).toMatchObject({ name: 'Main channels', accountIds: [a.id, b.id] });
+		expect((await post('/api/groups', { name: '', accountIds: [a.id] })).statusCode).toBe(422);
+		expect((await post('/api/groups', { name: 'Empty', accountIds: ['nope'] })).statusCode).toBe(422);
+		getDb().prepare("UPDATE accounts SET status = 'disconnected' WHERE id = ?").run(b.id);
+		expect((await get('/api/groups')).json()[0].accountIds).toEqual([a.id]);
+		const del = await app.inject({ method: 'DELETE', url: `/api/groups/${r.json().id}`, headers: { cookie, ...H } });
+		expect(del.json()).toEqual([]);
 	});
 });
