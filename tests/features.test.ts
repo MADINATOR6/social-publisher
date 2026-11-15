@@ -222,3 +222,32 @@ describe('Instagram through Meta Unified login', () => {
 		expect(viaUnified(getAccount(ig[0].id))).toBe(true);
 	});
 });
+
+describe('Instagram through Facebook Login (no business portfolio)', () => {
+	it('connects every Instagram account linked to the chosen Pages, each with its own Page token', async () => {
+		const { saveSettings } = await import('../server/settings.js');
+		saveSettings({ INSTAGRAM_APP_ID: '1234567', INSTAGRAM_APP_SECRET: 'sec', INSTAGRAM_LOGIN: 'facebook' });
+		resetSettingsCache();
+		const url = new URL((await post('/api/oauth/instagram/begin', {})).json().url);
+		expect(url.origin + url.pathname).toBe('https://www.facebook.com/v27.0/dialog/oauth');
+		expect(url.searchParams.get('scope')).toContain('instagram_content_publish');
+		expect(url.searchParams.get('config_id')).toBeNull();
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async (u: any) => {
+			const s = String(u);
+			if (s.includes('fb_exchange_token')) return new Response(JSON.stringify({ access_token: 'long-user', expires_in: 5184000 }), { status: 200 });
+			if (s.includes('/oauth/access_token')) return new Response(JSON.stringify({ access_token: 'short-user' }), { status: 200 });
+			if (s.includes('/me/accounts')) return new Response(JSON.stringify({ data: [
+				{ id: 'p1', name: 'Voltsys Page', access_token: 'page-token-1', instagram_business_account: { id: '1789', username: 'voltsys' } },
+				{ id: 'p2', name: 'No IG Page', access_token: 'page-token-2' },
+				{ id: 'p3', name: 'Onuha Page', access_token: 'page-token-3', instagram_business_account: { id: '1790', username: 'onuhafx' } },
+			] }), { status: 200 });
+			return new Response('{}', { status: 200 });
+		});
+		await app.inject({ method: 'GET', url: `/api/oauth/instagram/callback?code=abc&state=${url.searchParams.get('state')}` });
+		const ig = (await get('/api/accounts')).json().filter((a: any) => a.platform === 'instagram');
+		expect(ig.map((a: any) => a.handle).sort()).toEqual(['@onuhafx', '@voltsys']);
+		const { accessToken } = await import('../server/accounts.js');
+		const tokens = await Promise.all(ig.map((a: any) => accessToken(a.id)));
+		expect(tokens.sort()).toEqual(['page-token-1', 'page-token-3']);
+	});
+});

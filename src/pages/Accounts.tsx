@@ -1,15 +1,50 @@
 import React, { useEffect, useState } from 'react';
 import { computer, desktop, openSignIn } from '../desktop';
-import { has, api, ApiError, fmtTime, PLATFORM_NAME, type Account, type Config, type Issue, type Platform, type Setup } from '../api';
-import { Avatar, FieldError, Icon, PlatformMark } from '../ui';
+import { has, api, ApiError, fmtTime, PLATFORM_NAME, type Account, type IgLogin, type Config, type Issue, type Platform, type Setup } from '../api';
+import { Avatar, FieldError, Icon, PlatformMark, Seg } from '../ui';
 import { GroupsManager } from './GroupsManager';
 
 type Step = { text: React.ReactNode; link?: [string, string] };
 
+/**
+ * Instagram can be connected three ways, depending on what the Meta app offers and what the
+ * Facebook account is allowed to do. Each list is the complete set of steps, in order.
+ */
+const IG_STEPS: Record<IgLogin, Step[]> = {
+	facebook: [
+		{ text: <>Make each Instagram account <b>Professional</b>: Instagram app → Settings → <b>Account type and tools → Switch to professional account</b> (Creator or Business).</> },
+		{ text: <>Link each Instagram account to a <b>Facebook Page</b> you manage. No Page yet? Create one (free, any name). Then on the Page: <b>Settings → Linked accounts → Instagram → Connect</b>.</>, link: ['Create a Page', 'https://www.facebook.com/pages/create'] },
+		{ text: <>In your Meta app, open <b>Use cases → Customize → API setup with Facebook login</b> and add these permissions: <b>instagram_basic</b>, <b>instagram_content_publish</b>, <b>instagram_manage_insights</b>, <b>pages_show_list</b>, <b>pages_read_engagement</b>, <b>business_management</b>.</>, link: ['Open My Apps', 'https://developers.facebook.com/apps/'] },
+		{ text: <>In the same app, open <b>Facebook Login → Settings</b>, paste the address below into <b>Valid OAuth Redirect URIs</b>, and click <b>Save changes</b>.</> },
+		{ text: <>Open <b>App settings → Basic</b>, copy the <b>App ID</b> and <b>App secret</b>, and paste them here.</> },
+		{ text: <>Click <b>Save and connect Instagram</b>, log in with Facebook, and tick the Pages of every Instagram account you want. They all connect at once.</> },
+	],
+	unified: [
+		{ text: <>Make each Instagram account <b>Professional</b> (Creator or Business) in the Instagram app’s settings.</> },
+		{ text: <>In your Meta app, open <b>Use cases → Customize → API setup with Unified login</b> and click <b>+ Business portfolio</b>. Your Facebook account must be allowed to create portfolios; if Meta says advertising is restricted, use <b>Facebook login</b> above instead.</>, link: ['Open My Apps', 'https://developers.facebook.com/apps/'] },
+		{ text: <>Under <b>App roles → Roles</b>, add each Instagram account as an <b>Instagram Tester</b> and accept the invite on Instagram.</>, link: ['Accept invites', 'https://www.instagram.com/accounts/manage_access/'] },
+		{ text: <>Create a <b>configuration</b>: token expiry <b>Never</b>; permissions <b>instagram_content_publish</b>, <b>instagram_manage_insights</b>, <b>business_management</b>; <b>Redirect URL</b> = the address below. Copy its <b>Configuration ID</b>.</> },
+		{ text: <>Open <b>App settings → Basic</b> and paste the <b>App ID</b>, <b>App secret</b> and <b>Configuration ID</b> here.</> },
+		{ text: <>Click <b>Save and connect Instagram</b> and tick every Instagram account you want. They all connect at once.</> },
+	],
+	instagram: [
+		{ text: <>Make each Instagram account <b>Professional</b> (Creator or Business) in the Instagram app’s settings.</> },
+		{ text: <>Only for Meta apps that still show <b>API setup with Instagram login</b> (older apps). Under <b>App roles → Roles</b>, add each account as an <b>Instagram Tester</b> and accept the invite.</>, link: ['Accept invites', 'https://www.instagram.com/accounts/manage_access/'] },
+		{ text: <>In <b>API setup with Instagram login → Business login settings</b>, add the address below as the OAuth redirect URI.</> },
+		{ text: <>Paste the <b>Instagram app ID</b> and <b>Instagram app secret</b> from that page here (not the Facebook ones).</> },
+		{ text: <>Click <b>Save and connect Instagram</b>. Add the second account with <b>Add another</b>.</> },
+	],
+};
+const IG_MODES: { value: IgLogin; label: string }[] = [
+	{ value: 'facebook', label: 'Facebook login' },
+	{ value: 'unified', label: 'Unified login' },
+	{ value: 'instagram', label: 'Instagram login (older apps)' },
+];
+
 /** What a second account on the same platform needs while the developer app is in testing. */
 const ADD_ANOTHER: Record<Platform, string> = {
 	youtube: 'Adding another channel: Google shows its account chooser. Each Google account must be a Test user on your consent screen (Audience), unless the app is published. Brand-account channels appear in the chooser under their Google account.',
-	instagram: 'Adding another account: Instagram asks you to sign in again. Each account must be Professional (Business or Creator) and added as an Instagram Tester in your Meta app (App roles → Roles), with the invite accepted in Instagram.',
+	instagram: 'Adding another Instagram account: with Facebook login, link it to a Facebook Page you manage, then click Add another and tick that Page. With Unified login, tick it when Meta asks. Every account must be Professional (Creator or Business).',
 	tiktok: 'Adding another account: TikTok asks which account to use. While the app is in Sandbox, each account must be added as a target user in your TikTok developer app.',
 };
 
@@ -85,6 +120,7 @@ function SetupPanel({ p, setup, onSaved, onClose }: { p: Platform; setup: Setup;
 	const [id, setId] = useState('');
 	const [secret, setSecret] = useState('');
 	const [configId, setConfigId] = useState('');
+	const [igMode, setIgMode] = useState<IgLogin>(setup.platforms.instagram.loginMode && setup.platforms.instagram.configured ? setup.platforms.instagram.loginMode : 'facebook');
 	const [reveal, setReveal] = useState(false);
 	const [publicUrl, setPublicUrl] = useState(setup.publicBaseUrl.value ?? '');
 	const [issues, setIssues] = useState<Issue[]>([]);
@@ -96,7 +132,7 @@ function SetupPanel({ p, setup, onSaved, onClose }: { p: Platform; setup: Setup;
 		setErr(null);
 		setIssues([]);
 		try {
-			const s = await api.saveKeys(p, { id, secret, ...(p === 'instagram' ? { publicBaseUrl: publicUrl, configId } : {}) });
+			const s = await api.saveKeys(p, { id, secret, ...(p === 'instagram' ? { publicBaseUrl: publicUrl, configId: igMode === 'unified' ? configId : '', loginMode: igMode } : {}) });
 			onSaved(s, connect);
 		} catch (e: any) {
 			setErr(e.message);
@@ -108,8 +144,15 @@ function SetupPanel({ p, setup, onSaved, onClose }: { p: Platform; setup: Setup;
 
 	return (
 		<div className="setup">
+			{p === 'instagram' && (
+				<div className="ig-mode">
+					<div className="label">How does your Meta app connect?</div>
+					<Seg label="Instagram connection type" value={igMode} onChange={setIgMode} options={IG_MODES} />
+					<div className="hint">{igMode === 'facebook' ? 'Works without a Business portfolio. Each Instagram account needs a linked Facebook Page.' : igMode === 'unified' ? 'Meta’s newest setup. Needs a Business portfolio, which some Facebook accounts are not allowed to create.' : 'Only if your Meta app still has “API setup with Instagram login”.'} · {IG_STEPS[igMode].length} steps, about 10 minutes.</div>
+				</div>
+			)}
 			<ol className="guide">
-				{g.steps(info).map((s, i) => (
+				{(p === 'instagram' ? IG_STEPS[igMode] : g.steps(info)).map((s, i) => (
 					<li key={i}>
 						<span className="num">{i + 1}</span>
 						<div className="grow">
@@ -139,11 +182,10 @@ function SetupPanel({ p, setup, onSaved, onClose }: { p: Platform; setup: Setup;
 					</div>
 					<FieldError issues={issues} field="secret" />
 				</label>
-				{p === 'instagram' && (
+				{p === 'instagram' && igMode === 'unified' && (
 					<label className="f">
 						<span>Configuration ID (Unified login)</span>
 						<input className={`field mono ${issues.some((i) => i.field === 'configId') ? 'bad' : ''}`} value={configId} onChange={(e) => setConfigId(e.target.value)} placeholder={info.configPreview ? `Saved: ${info.configPreview}` : 'From your Unified login configuration'} autoComplete="off" spellCheck={false} />
-						<div className="hint">New Meta apps only offer Unified login. Leave this empty only if your app still shows “API setup with Instagram login”.</div>
 						<FieldError issues={issues} field="configId" />
 					</label>
 				)}
@@ -151,7 +193,7 @@ function SetupPanel({ p, setup, onSaved, onClose }: { p: Platform; setup: Setup;
 					<label className="f">
 						<span>Public address (HTTPS) that reaches this app</span>
 						<input className={`field mono ${issues.some((i) => i.field === 'publicBaseUrl') ? 'bad' : ''}`} value={publicUrl} onChange={(e) => setPublicUrl(e.target.value)} placeholder="https://your-tunnel.trycloudflare.com" autoComplete="off" spellCheck={false} />
-						<div className="hint">For example run <span className="mono">cloudflared tunnel --url http://localhost:8787</span> and paste the https address it prints. You can add this later.</div>
+						<div className="hint">Your tunnel address (for example from ngrok). Keep the tunnel running whenever you connect or post to Instagram.</div>
 						<FieldError issues={issues} field="publicBaseUrl" />
 					</label>
 				)}
@@ -258,7 +300,7 @@ export function AccountsPage({ accounts, config, refresh, refreshConfig }: { acc
 							<span className="pmark"><PlatformMark p={p} size={18} bare /></span>
 							<div className="t grow">
 								<b>{PLATFORM_NAME[p]}</b>
-								<small>{info.configured ? short : 'Not set up yet · about 5 minutes'}</small>
+								<small>{info.configured ? short : (p === 'instagram' ? 'Not set up yet · about 10–15 minutes' : 'Not set up yet · about 5 minutes')}</small>
 							</div>
 							{hosted && devKeys && !open && <button className="btn sm quiet" onClick={() => setEditing(p)}>Own keys</button>}
 							{info.configured ? (

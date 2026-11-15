@@ -63,7 +63,8 @@ export type TokenSet = {
 	scopes?: string | null;
 };
 
-export type Identity = { externalId: string; displayName: string; handle?: string | null; avatarUrl?: string | null; meta?: Record<string, unknown> };
+/** `tokens`: this account's own token, when one sign-in yields a different token per account (Facebook Pages). */
+export type Identity = { externalId: string; displayName: string; handle?: string | null; avatarUrl?: string | null; meta?: Record<string, unknown>; tokens?: TokenSet };
 
 export type Outcome =
 	| { state: 'published'; permalink: string | null; remoteId?: string | null; message?: string }

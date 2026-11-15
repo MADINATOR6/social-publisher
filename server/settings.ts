@@ -9,7 +9,7 @@ export const FIELDS: Record<Platform, { id: string; secret: string; idLabel: str
 	instagram: { id: 'INSTAGRAM_APP_ID', secret: 'INSTAGRAM_APP_SECRET', idLabel: 'App ID', secretLabel: 'App secret' },
 	tiktok: { id: 'TIKTOK_CLIENT_KEY', secret: 'TIKTOK_CLIENT_SECRET', idLabel: 'Client key', secretLabel: 'Client secret' },
 };
-const ALLOWED = new Set([...Object.values(FIELDS).flatMap((f) => [f.id, f.secret]), 'PUBLIC_BASE_URL', 'NOTIFY', 'INSTAGRAM_CONFIG_ID']);
+const ALLOWED = new Set([...Object.values(FIELDS).flatMap((f) => [f.id, f.secret]), 'PUBLIC_BASE_URL', 'NOTIFY', 'INSTAGRAM_CONFIG_ID', 'INSTAGRAM_LOGIN']);
 
 let cache: { at: number; values: Map<string, string> } | null = null;
 
@@ -61,7 +61,7 @@ export function setupView() {
 					redirectUri: redirectUri(p),
 					idLabel: f.idLabel,
 					secretLabel: f.secretLabel,
-					...(p === 'instagram' ? { configPreview: (saved.get('INSTAGRAM_CONFIG_ID') ?? process.env.INSTAGRAM_CONFIG_ID) ? mask(saved.get('INSTAGRAM_CONFIG_ID') ?? process.env.INSTAGRAM_CONFIG_ID ?? '') : null } : {}),
+					...(p === 'instagram' ? { loginMode: (saved.get('INSTAGRAM_CONFIG_ID') ?? process.env.INSTAGRAM_CONFIG_ID) ? 'unified' : (saved.get('INSTAGRAM_LOGIN') ?? process.env.INSTAGRAM_LOGIN) === 'facebook' ? 'facebook' : 'instagram', configPreview: (saved.get('INSTAGRAM_CONFIG_ID') ?? process.env.INSTAGRAM_CONFIG_ID) ? mask(saved.get('INSTAGRAM_CONFIG_ID') ?? process.env.INSTAGRAM_CONFIG_ID ?? '') : null } : {}),
 				}];
 			}),
 		),

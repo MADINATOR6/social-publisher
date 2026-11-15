@@ -17,14 +17,19 @@ import { AttentionError, AuthError, PermanentError, RejectedError, TransientErro
  * Older apps use Instagram Login (graph.instagram.com). Each account remembers which one it came from.
  */
 export const FB_GRAPH = 'https://graph.facebook.com/v27.0';
+/** Accounts connected through Unified login or Facebook Login live on graph.facebook.com. */
 export const viaUnified = (a?: { meta?: string | null } | null) => {
 	try {
-		return JSON.parse(a?.meta ?? '{}')?.via === 'unified';
+		return ['unified', 'facebook'].includes(JSON.parse(a?.meta ?? '{}')?.via);
 	} catch {
 		return false;
 	}
 };
-const unifiedSetup = () => Boolean(config.instagram.configId);
+export type IgLogin = 'unified' | 'facebook' | 'instagram';
+export const loginMode = (): IgLogin => (config.instagram.configId ? 'unified' : config.instagram.loginMode === 'facebook' ? 'facebook' : 'instagram');
+const unifiedSetup = () => loginMode() === 'unified';
+const facebookSetup = () => loginMode() === 'facebook';
+const FB_SCOPES = 'instagram_basic,instagram_content_publish,instagram_manage_insights,pages_show_list,pages_read_engagement,business_management';
 const G = (a?: { meta?: string | null } | null) => (viaUnified(a) ? FB_GRAPH : `https://graph.instagram.com/${config.instagram.apiVersion}`);
 const DAY = 86_400_000;
 
@@ -54,6 +59,11 @@ export const instagram: Adapter = {
 			const q = new URLSearchParams({ client_id: config.instagram.appId, config_id: config.instagram.configId, redirect_uri: redirectUri('instagram'), response_type: 'code', override_default_response_type: 'true', state });
 			return `https://www.facebook.com/v27.0/dialog/oauth?${q}`;
 		}
+		if (facebookSetup()) {
+			// Facebook Login: sign in with Facebook, then choose the Pages whose Instagram accounts to share.
+			const q = new URLSearchParams({ client_id: config.instagram.appId, redirect_uri: redirectUri('instagram'), response_type: 'code', scope: FB_SCOPES, auth_type: 'rerequest', state });
+			return `https://www.facebook.com/v27.0/dialog/oauth?${q}`;
+		}
 		const q = new URLSearchParams({
 			client_id: config.instagram.appId,
 			redirect_uri: redirectUri('instagram'),
@@ -73,6 +83,14 @@ export const instagram: Adapter = {
 			// Portfolio-owned token. Its lifetime comes from the configuration ("Never" is recommended).
 			return { accessToken: t.access_token, accessExpiresAt: t.expires_in ? Date.now() + t.expires_in * 1000 : null, scopes: null };
 		}
+		if (facebookSetup()) {
+			const q = new URLSearchParams({ client_id: config.instagram.appId, client_secret: config.instagram.appSecret, redirect_uri: redirectUri('instagram'), code });
+			const short = await json(`${FB_GRAPH}/oauth/access_token?${q}`);
+			// Long-lived user token; each Page's token taken from it does not expire.
+			const l = new URLSearchParams({ grant_type: 'fb_exchange_token', client_id: config.instagram.appId, client_secret: config.instagram.appSecret, fb_exchange_token: short.access_token });
+			const long = await json(`${FB_GRAPH}/oauth/access_token?${l}`);
+			return { accessToken: long.access_token, accessExpiresAt: long.expires_in ? Date.now() + long.expires_in * 1000 : null, scopes: null };
+		}
 		const short = await json('https://api.instagram.com/oauth/access_token', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -89,7 +107,7 @@ export const instagram: Adapter = {
 		if (viaUnified(account)) {
 			// Unified-login tokens are not refreshed by the app; an expired one means signing in again.
 			if (account.access_expires_at == null || account.access_expires_at > Date.now()) return { accessToken, accessExpiresAt: account.access_expires_at };
-			throw new AuthError('This Instagram sign-in has expired. Reconnect it (set the Meta configuration token expiry to Never to avoid this).');
+			throw new AuthError('This Instagram sign-in has expired. Reconnect it in Connected accounts.');
 		}
 		// Long-lived tokens can be refreshed once they are at least 24 hours old and not yet expired.
 		if (Date.now() - account.updated_at < DAY && (account.access_expires_at ?? 0) > Date.now()) return { accessToken, accessExpiresAt: account.access_expires_at };
@@ -100,6 +118,16 @@ export const instagram: Adapter = {
 
 	/** Unified login can share several Instagram accounts in one sign-in; all of them are connected. */
 	async identities(accessToken, tokens) {
+		if (facebookSetup()) {
+			const r = await json(`${FB_GRAPH}/me/accounts?fields=name,access_token,instagram_business_account{id,username,name,profile_picture_url}&limit=100`, { headers: { Authorization: `Bearer ${accessToken}` } });
+			const pages = ((r.data ?? []) as any[]).filter((p) => p.instagram_business_account?.id);
+			if (!pages.length)
+				throw new AttentionError('No Instagram account came through. Link each Instagram account to a Facebook Page you manage, then connect again and tick those Pages when Facebook asks.');
+			return pages.map((p) => {
+				const a = p.instagram_business_account;
+				return { externalId: String(a.id), displayName: a.name || a.username || p.name, handle: a.username ? `@${a.username}` : null, avatarUrl: a.profile_picture_url ?? null, meta: { via: 'facebook', pageId: p.id }, tokens: { accessToken: p.access_token, accessExpiresAt: null } };
+			});
+		}
 		if (!unifiedSetup()) return [await instagram.identity(accessToken, tokens)];
 		const r = await json(`${FB_GRAPH}/me/assigned_instagram_accounts?fields=id,username,name,profile_picture_url`, { headers: { Authorization: `Bearer ${accessToken}` } });
 		const list = (r.data ?? []) as any[];
@@ -109,7 +137,7 @@ export const instagram: Adapter = {
 	},
 
 	async identity(accessToken, tokens) {
-		if (unifiedSetup()) return (await instagram.identities!(accessToken, tokens))[0];
+		if (unifiedSetup() || facebookSetup()) return (await instagram.identities!(accessToken, tokens))[0];
 		const me = await json(`${G()}/me?fields=user_id,username,name,profile_picture_url,account_type`, { headers: { Authorization: `Bearer ${accessToken}` } });
 		if (me.account_type && !['BUSINESS', 'MEDIA_CREATOR', 'CREATOR'].includes(String(me.account_type))) {
 			throw new AttentionError('This Instagram account is personal. Switch it to a Professional (Business or Creator) account to publish.');

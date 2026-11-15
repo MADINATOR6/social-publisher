@@ -62,6 +62,10 @@ export const config = {
 		get configId() {
 			return live('INSTAGRAM_CONFIG_ID');
 		},
+		/** 'facebook' = Instagram API with Facebook Login (needs a Facebook Page linked to each account, no business portfolio). */
+		get loginMode() {
+			return live('INSTAGRAM_LOGIN');
+		},
 	},
 	youtube: {
 		get clientId() {

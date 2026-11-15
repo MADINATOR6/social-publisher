@@ -14,13 +14,15 @@ export type Post = { id: string; caption: string; isDemo: boolean; createdAt: nu
 /** `accountId`: set by the composer's own checks, so two accounts on one platform keep their problems apart. */
 /** A saved set of accounts for "Post to" (Mac server feature `groups`). */
 export type Group = { id: string; name: string; accountIds: string[] };
+/** How Publisher signs in to Instagram (depends on what the Meta app offers). */
+export type IgLogin = 'facebook' | 'unified' | 'instagram';
 export type Issue = { field: string; message: string; accountId?: string };
 export type Status = { worker: { state: 'running' | 'stale' | 'never'; lastSeenAt: number | null; startedAt: number | null }; activeJobs: number; noSignIn: boolean; demoMode: boolean; now: number };
 export type Verify = { ok: boolean; simulated?: boolean; reconnect?: boolean; checkedAt: number; message: string };
 export type Setup = {
 	appUrl: string;
 	publicBaseUrl: { value: string | null; source: 'app' | 'env' | null };
-	platforms: Record<Platform, { configured: boolean; source: 'app' | 'env' | null; idPreview: string | null; hasSecret: boolean; redirectUri: string; idLabel: string; secretLabel: string; configPreview?: string | null }>;
+	platforms: Record<Platform, { configured: boolean; source: 'app' | 'env' | null; idPreview: string | null; hasSecret: boolean; redirectUri: string; idLabel: string; secretLabel: string; configPreview?: string | null; loginMode?: IgLogin }>;
 };
 
 /** One account's stats for a period (Windows build). Totals a platform does not report are absent. */
@@ -72,7 +74,7 @@ export const api = {
 	disconnect: (id: string) => call('DELETE', `/api/accounts/${id}`),
 	addDemoAccounts: () => call<Account[]>('POST', '/api/demo/accounts'),
 	setup: () => call<Setup>('GET', '/api/setup'),
-	saveKeys: (p: Platform, body: { id: string; secret: string; publicBaseUrl?: string; configId?: string }) => call<Setup>('PUT', `/api/setup/${p}`, body),
+	saveKeys: (p: Platform, body: { id: string; secret: string; publicBaseUrl?: string; configId?: string; loginMode?: IgLogin }) => call<Setup>('PUT', `/api/setup/${p}`, body),
 	removeKeys: (p: Platform) => call<Setup>('DELETE', `/api/setup/${p}`),
 	savePublicUrl: (url: string) => call<Setup>('PUT', '/api/setup/public-url', { publicBaseUrl: url }),
 	status: () => call<Status>('GET', '/api/status'),
