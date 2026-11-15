@@ -199,6 +199,12 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
 				? reply.type('text/html; charset=utf-8').header('Cache-Control', 'no-store').send(callbackPage(ok, msg))
 				: reply.redirect(`${config.appUrl}/accounts?${ok ? 'connected' : 'error'}=${encodeURIComponent(msg)}`);
 		const fail = (msg: string) => done(false, msg);
+		if (q.error === 'access_denied' || q.error_reason === 'user_denied')
+			return fail(
+				platform === 'youtube'
+					? 'Google cancelled the sign-in. Try Connect again: on "Google hasn\'t verified this app" click Continue (not Back to safety), then tick every permission box and click Continue. The Google account must also be a Test user on your consent screen while the app is in Testing.'
+					: `${PLATFORM_LABEL[platform] ?? platform} cancelled the sign-in. Try Connect again and allow every permission it asks for. While your developer app is in testing, this account must be added as a tester there.`,
+			);
 		if (q.error) return fail(`${platform}: ${q.error_description || q.error_reason || q.error}`);
 		if (!saved || saved.platform !== platform || saved.exp < now()) return fail('The sign-in link expired or did not match. Please try connecting again from the app.');
 		if (!q.code) return fail('The platform did not return an authorization code.');

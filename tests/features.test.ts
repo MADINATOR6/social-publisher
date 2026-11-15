@@ -171,3 +171,10 @@ describe('several accounts per platform', () => {
 		expect(ts.map((t: any) => t.settings.title).sort()).toEqual(['First', 'Second']);
 	});
 });
+
+describe('cancelled sign-in', () => {
+	it('explains a cancelled Google sign-in in plain words', async () => {
+		const r = await app.inject({ method: 'GET', url: '/api/oauth/youtube/callback?error=access_denied&state=x' });
+		expect(decodeURIComponent(String(r.headers.location ?? r.body))).toContain('Back to safety');
+	});
+});

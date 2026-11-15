@@ -119,7 +119,7 @@ describe('OAuth', () => {
 	it('handles a refused sign-in with a clear message', async () => {
 		const r = await get('/api/oauth/instagram/callback?error=access_denied&error_description=User+denied');
 		expect(r.statusCode).toBe(302);
-		expect(decodeURIComponent(r.headers.location as string)).toContain('User denied');
+		expect(decodeURIComponent(r.headers.location as string)).toContain('Instagram cancelled the sign-in');
 	});
 
 	it('rejects a callback whose state does not match', async () => {
