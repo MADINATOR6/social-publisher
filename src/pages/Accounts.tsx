@@ -76,10 +76,12 @@ const GUIDE: Record<Platform, { where: string; steps: (s: Setup['platforms'][Pla
 	tiktok: {
 		where: 'TikTok for Developers',
 		steps: () => [
-			{ text: 'Create an app.', link: ['Open TikTok for Developers', 'https://developers.tiktok.com/apps/'] },
-			{ text: <>Add the <b>Login Kit</b> and <b>Content Posting API</b> products, with the scopes <span className="mono">user.info.basic</span> and <span className="mono">video.upload</span>.</> },
-			{ text: <>In Login Kit, add the address below as a redirect URI.</> },
-			{ text: 'Paste the Client key and Client secret here.' },
+			{ text: <>Log in with TikTok, then <b>Manage apps → Connect an app</b>. Give it a name (for example "Publisher"); you only need to fill the fields TikTok marks as required.</>, link: ['Open TikTok for Developers', 'https://developers.tiktok.com/apps/'] },
+			{ text: <>At the top of the app page switch to <b>Sandbox</b> and create one. A Sandbox works straight away for your own accounts, with no review.</> },
+			{ text: <>Click <b>Add products</b> and add <b>Login Kit</b>, <b>Content Posting API</b> and <b>Display API</b>. Under <b>Scopes</b>, make sure <span className="mono">user.info.basic</span>, <span className="mono">user.info.stats</span>, <span className="mono">video.list</span> and <span className="mono">video.upload</span> are ticked.</> },
+			{ text: <>In <b>Login Kit</b>, under Web, paste the redirect address below and save.</> },
+			{ text: <>In <b>Sandbox settings → Target users</b>, add every TikTok account you want to post to (sign in with each one when TikTok asks).</> },
+			{ text: <>Open <b>Credentials</b> on the Sandbox page, copy the <b>Client key</b> and <b>Client secret</b>, paste them here and click <b>Save and connect TikTok</b>.</> },
 		],
 		note: 'TikTok only accepts HTTPS redirect addresses, so a localhost address may be refused. Videos go to your TikTok inbox to finish in the app, because TikTok does not allow public direct posting from personal tools.',
 	},
@@ -300,7 +302,7 @@ export function AccountsPage({ accounts, config, refresh, refreshConfig }: { acc
 							<span className="pmark"><PlatformMark p={p} size={18} bare /></span>
 							<div className="t grow">
 								<b>{PLATFORM_NAME[p]}</b>
-								<small>{info.configured ? short : (p === 'instagram' ? 'Not set up yet · about 10–15 minutes' : 'Not set up yet · about 5 minutes')}</small>
+								<small>{info.configured ? short : (p === 'instagram' ? 'Not set up yet · about 10–15 minutes' : p === 'tiktok' ? 'Not set up yet · about 10 minutes' : 'Not set up yet · about 5 minutes')}</small>
 							</div>
 							{hosted && devKeys && !open && <button className="btn sm quiet" onClick={() => setEditing(p)}>Own keys</button>}
 							{info.configured ? (
