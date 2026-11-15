@@ -27,6 +27,13 @@ afterEach(async () => {
 });
 
 describe('access control', () => {
+	it('serves the Terms and Privacy pages without signing in', async () => {
+		for (const url of ['/terms', '/privacy']) {
+			const r = await app.inject({ method: 'GET', url });
+			expect(r.statusCode).toBe(200);
+			expect(r.headers['content-type']).toMatch(/text\/html/);
+		}
+	});
 	it('blocks the API without signing in', async () => {
 		expect((await app.inject({ method: 'GET', url: '/api/accounts' })).statusCode).toBe(401);
 		expect((await app.inject({ method: 'POST', url: '/api/posts', payload: {} })).statusCode).toBe(401);

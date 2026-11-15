@@ -59,6 +59,22 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
 		if (!open && !['GET', 'HEAD'].includes(req.method) && req.headers['x-requested-with'] !== 'social-publisher') return reply.code(403).send({ error: 'Blocked request.' });
 	});
 
+	// ---------- Terms and Privacy pages (public; platform developer consoles ask for these links) ----------
+	const page = (title: string, body: string) =>
+		`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Publisher · ${title}</title><style>body{font:16px/1.6 -apple-system,system-ui,sans-serif;max-width:680px;margin:40px auto;padding:0 20px;color:#ddd;background:#16161a}h1{font-size:24px}h2{font-size:17px;margin-top:28px}</style><h1>${title}</h1>${body}<p style="color:#888;margin-top:32px">Last updated 16 November 2026</p></html>`;
+	app.get('/terms', async (_req, reply) =>
+		reply.type('text/html').send(page('Terms of Service', `
+<p>Publisher is a private, single-user tool. Its owner uses it to upload their own videos to their own YouTube, Instagram and TikTok accounts. It is not offered to the public.</p>
+<h2>Use</h2><p>Only the owner may use Publisher, and only with accounts they own or are allowed to manage. Each post is started by the owner. Publisher never posts on its own.</p>
+<h2>Platforms</h2><p>Using Publisher with YouTube, Instagram or TikTok is also subject to those platforms' own terms and community guidelines. The owner is responsible for the content they post, including having the rights to any music.</p>
+<h2>No warranty</h2><p>Publisher is provided as is, without any warranty.</p>`)));
+	app.get('/privacy', async (_req, reply) =>
+		reply.type('text/html').send(page('Privacy Policy', `
+<p>Publisher is a private tool that runs on its owner's own computer. It has no other users and no servers of its own.</p>
+<h2>What it stores</h2><p>When the owner connects an account, Publisher stores the sign-in token and basic profile details (name, handle, avatar) on the owner's computer, encrypted with a key protected by the macOS Keychain. It also keeps the owner's videos, captions and post history there.</p>
+<h2>How it is used</h2><p>This data is used only to upload the owner's videos and to show their own post statistics. Publisher has no ads or analytics trackers, and it does not sell or share data with anyone except the platform a video is being posted to.</p>
+<h2>Deleting data</h2><p>Disconnecting an account in Publisher deletes its token. Access can also be removed at any time in the platform's own app settings. Uploaded video copies are deleted automatically after a few days.</p>`)));
+
 	// ---------- session ----------
 	const tries = new Map<string, { n: number; at: number }>();
 	app.post('/api/session', async (req, reply) => {
