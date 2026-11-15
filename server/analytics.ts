@@ -11,6 +11,7 @@
 //   and shares of recent videos. TikTok does not give apps audience countries or daily numbers.
 //
 // Results are cached for 10 minutes per account and period.
+import { FB_GRAPH, viaUnified } from './platforms/instagram.js';
 import { accessToken, getAccount, listAccounts } from './accounts.js';
 import { config } from './config.js';
 import type { Platform } from './db.js';
@@ -92,7 +93,7 @@ async function account(a: PublicAccount, days: number, fresh: boolean): Promise<
 		else {
 			const token = await accessToken(id);
 			if (platform === 'youtube') await youtube(token, s);
-			else if (platform === 'instagram') await instagram(token, getAccount(id)?.external_id ?? '', s);
+			else if (platform === 'instagram') await instagram(token, getAccount(id)?.external_id ?? '', s, viaUnified(getAccount(id)));
 			else await tiktok(token, s);
 		}
 	} catch (e: any) {
@@ -274,9 +275,10 @@ function ages(list: [string, string, number][]): AccountStats['ages'] {
 
 // ---------- Instagram ----------
 
-async function instagram(token: string, igId: string, s: Stats) {
-	const g = `${INSTAGRAM_GRAPH}/${config.instagram.apiVersion}`;
-	const me = await json(`${g}/me?fields=followers_count,media_count`, bearer(token));
+async function instagram(token: string, igId: string, s: Stats, unified = false) {
+	// Unified-login accounts are read on graph.facebook.com, where /me is the business, not the account.
+	const g = unified ? FB_GRAPH : `${INSTAGRAM_GRAPH}/${config.instagram.apiVersion}`;
+	const me = await json(`${g}/${unified ? igId : 'me'}?fields=followers_count,media_count`, bearer(token));
 	s.followers = f64(me?.followers_count) ?? null;
 	s.countriesOf = 'followers';
 

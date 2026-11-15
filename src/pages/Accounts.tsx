@@ -30,13 +30,13 @@ const GUIDE: Record<Platform, { where: string; steps: (s: Setup['platforms'][Pla
 	instagram: {
 		where: 'Meta for Developers',
 		steps: () => [
-			{ text: <>Switch your Instagram to a <b>Professional</b> account (Business or Creator) in the Instagram app’s settings.</> },
-			{ text: <>Log in to Meta for Developers, click <b>Create app</b>, and pick the use case <b>Manage messaging & content on Instagram</b>.</>, link: ['Open My Apps', 'https://developers.facebook.com/apps/'] },
-			{ text: <>Under <b>App roles → Roles</b>, add your Instagram account as an <b>Instagram Tester</b>, then accept the invite.</>, link: ['Accept the invite', 'https://www.instagram.com/accounts/manage_access/'] },
-			{ text: <>In <b>API setup with Instagram login → Business login settings</b>, add the address below as the OAuth redirect URI.</> },
-			{ text: <>Paste the <b>Instagram</b> app ID and secret here. These are not the Facebook app ones.</> },
+			{ text: <>Make each Instagram account <b>Professional</b> (Creator or Business) in the Instagram app’s settings.</> },
+			{ text: <>In your Meta app, open <b>Use cases → Customize → API setup with Unified login</b> and click <b>+ Business portfolio</b> to create or pick one (free).</>, link: ['Open My Apps', 'https://developers.facebook.com/apps/'] },
+			{ text: <>Under <b>App roles → Roles</b>, add each Instagram account as an <b>Instagram Tester</b> and accept the invite on Instagram.</>, link: ['Accept invites', 'https://www.instagram.com/accounts/manage_access/'] },
+			{ text: <>Back in <b>API setup with Unified login</b>, create a <b>configuration</b>: set token expiry to <b>Never</b>, add the permissions <b>instagram_content_publish</b>, <b>instagram_manage_insights</b> and <b>business_management</b>, and paste the address below as its <b>Redirect URL</b>.</> },
+			{ text: <>Paste the <b>App ID</b> and <b>App secret</b> (App settings → Basic) and the <b>Configuration ID</b> here.</>, link: ['Open App settings', 'https://developers.facebook.com/apps/'] },
 		],
-		note: 'Instagram downloads your video from a public HTTPS address, so publishing also needs the public address below.',
+		note: 'Instagram downloads your video from a public HTTPS address, so publishing also needs the public address below. When you sign in, tick every Instagram account you want: all of them connect at once.',
 	},
 	tiktok: {
 		where: 'TikTok for Developers',
@@ -84,6 +84,7 @@ function SetupPanel({ p, setup, onSaved, onClose }: { p: Platform; setup: Setup;
 	const g = GUIDE[p];
 	const [id, setId] = useState('');
 	const [secret, setSecret] = useState('');
+	const [configId, setConfigId] = useState('');
 	const [reveal, setReveal] = useState(false);
 	const [publicUrl, setPublicUrl] = useState(setup.publicBaseUrl.value ?? '');
 	const [issues, setIssues] = useState<Issue[]>([]);
@@ -95,7 +96,7 @@ function SetupPanel({ p, setup, onSaved, onClose }: { p: Platform; setup: Setup;
 		setErr(null);
 		setIssues([]);
 		try {
-			const s = await api.saveKeys(p, { id, secret, ...(p === 'instagram' ? { publicBaseUrl: publicUrl } : {}) });
+			const s = await api.saveKeys(p, { id, secret, ...(p === 'instagram' ? { publicBaseUrl: publicUrl, configId } : {}) });
 			onSaved(s, connect);
 		} catch (e: any) {
 			setErr(e.message);
@@ -138,6 +139,14 @@ function SetupPanel({ p, setup, onSaved, onClose }: { p: Platform; setup: Setup;
 					</div>
 					<FieldError issues={issues} field="secret" />
 				</label>
+				{p === 'instagram' && (
+					<label className="f">
+						<span>Configuration ID (Unified login)</span>
+						<input className={`field mono ${issues.some((i) => i.field === 'configId') ? 'bad' : ''}`} value={configId} onChange={(e) => setConfigId(e.target.value)} placeholder={info.configPreview ? `Saved: ${info.configPreview}` : 'From your Unified login configuration'} autoComplete="off" spellCheck={false} />
+						<div className="hint">New Meta apps only offer Unified login. Leave this empty only if your app still shows “API setup with Instagram login”.</div>
+						<FieldError issues={issues} field="configId" />
+					</label>
+				)}
 				{p === 'instagram' && (
 					<label className="f">
 						<span>Public address (HTTPS) that reaches this app</span>

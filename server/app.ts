@@ -103,13 +103,14 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
 	app.put('/api/setup/:platform', async (req, reply) => {
 		const platform = (req.params as any).platform as Platform;
 		if (!PLATFORMS.includes(platform)) return reply.code(404).send({ error: 'Unknown platform' });
-		const b = z.object({ id: z.string().max(300).default(''), secret: z.string().max(300).default(''), publicBaseUrl: z.string().max(300).optional() }).safeParse(req.body ?? {});
+		const b = z.object({ id: z.string().max(300).default(''), secret: z.string().max(300).default(''), publicBaseUrl: z.string().max(300).optional(), configId: z.string().max(60).optional() }).safeParse(req.body ?? {});
 		if (!b.success) return reply.code(400).send({ error: 'Check the fields.' });
 		const issues = checkKeys(platform, b.data.id, b.data.secret);
 		if (b.data.publicBaseUrl && !/^https:\/\/[^\s/]+(\/.*)?$/.test(b.data.publicBaseUrl.trim())) issues.push({ field: 'publicBaseUrl', message: 'Use the full https:// address of your tunnel.' });
+		if (platform === 'instagram' && b.data.configId?.trim() && !/^\d{6,}$/.test(b.data.configId.trim())) issues.push({ field: 'configId', message: 'The configuration ID is a number.' });
 		if (issues.length) return reply.code(422).send({ error: 'Check the highlighted fields.', issues });
 		const f = FIELDS[platform];
-		saveSettings({ [f.id]: b.data.id.trim(), [f.secret]: b.data.secret.trim(), ...(b.data.publicBaseUrl !== undefined ? { PUBLIC_BASE_URL: b.data.publicBaseUrl.trim().replace(/\/$/, '') } : {}) });
+		saveSettings({ [f.id]: b.data.id.trim(), [f.secret]: b.data.secret.trim(), ...(b.data.publicBaseUrl !== undefined ? { PUBLIC_BASE_URL: b.data.publicBaseUrl.trim().replace(/\/$/, '') } : {}), ...(platform === 'instagram' && b.data.configId?.trim() ? { INSTAGRAM_CONFIG_ID: b.data.configId.trim() } : {}) });
 		return setupView();
 	});
 	app.delete('/api/setup/:platform', async (req, reply) => {
@@ -212,9 +213,9 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
 		try {
 			const adapter = ADAPTERS[platform];
 			const tokens = await adapter.exchangeCode(q.code, saved.verifier);
-			const id = await adapter.identity(tokens.accessToken, tokens);
-			const acct = upsertAccount(platform, id, tokens);
-			return done(true, acct.display_name);
+			const ids = adapter.identities ? await adapter.identities(tokens.accessToken, tokens) : [await adapter.identity(tokens.accessToken, tokens)];
+			const names = ids.map((id) => upsertAccount(platform, id, tokens).display_name);
+			return done(true, names.join(', '));
 		} catch (e: any) {
 			req.log?.warn({ platform }, 'oauth exchange failed');
 			return fail(`Could not connect ${platform}: ${redact(e?.message ?? String(e))}`);

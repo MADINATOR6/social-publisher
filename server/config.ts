@@ -58,6 +58,10 @@ export const config = {
 			return live('INSTAGRAM_APP_SECRET');
 		},
 		apiVersion: env('INSTAGRAM_API_VERSION', 'v25.0'),
+		/** Meta "Unified login" configuration ID. When set, Instagram signs in through Facebook Login for Business. */
+		get configId() {
+			return live('INSTAGRAM_CONFIG_ID');
+		},
 	},
 	youtube: {
 		get clientId() {

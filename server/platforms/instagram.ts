@@ -9,9 +9,23 @@ import * as covers from '../covers.js';
 import { signedToken } from '../crypto.js';
 import { form, http, json } from './http.js';
 import type { Adapter, Outcome, PublishContext } from './types.js';
-import { AttentionError, PermanentError, RejectedError, TransientError } from './types.js';
+import { AttentionError, AuthError, PermanentError, RejectedError, TransientError } from './types.js';
 
-const G = () => `https://graph.instagram.com/${config.instagram.apiVersion}`;
+/**
+ * Two ways in. New Meta apps get "Unified login": sign-in through Facebook Login for Business with a
+ * configuration ID, a token owned by the business portfolio, and calls on graph.facebook.com.
+ * Older apps use Instagram Login (graph.instagram.com). Each account remembers which one it came from.
+ */
+export const FB_GRAPH = 'https://graph.facebook.com/v27.0';
+export const viaUnified = (a?: { meta?: string | null } | null) => {
+	try {
+		return JSON.parse(a?.meta ?? '{}')?.via === 'unified';
+	} catch {
+		return false;
+	}
+};
+const unifiedSetup = () => Boolean(config.instagram.configId);
+const G = (a?: { meta?: string | null } | null) => (viaUnified(a) ? FB_GRAPH : `https://graph.instagram.com/${config.instagram.apiVersion}`);
 const DAY = 86_400_000;
 
 export const publicMediaUrl = (mediaId: string) => `${config.publicBaseUrl.replace(/\/$/, '')}/m/${signedToken({ media: mediaId }, 6 * 3600)}`;
@@ -35,6 +49,11 @@ export const instagram: Adapter = {
 	},
 
 	authorizeUrl(state) {
+		if (unifiedSetup()) {
+			// Unified login: the configuration (set up in Meta) decides the permissions and token lifetime.
+			const q = new URLSearchParams({ client_id: config.instagram.appId, config_id: config.instagram.configId, redirect_uri: redirectUri('instagram'), response_type: 'code', override_default_response_type: 'true', state });
+			return `https://www.facebook.com/v27.0/dialog/oauth?${q}`;
+		}
 		const q = new URLSearchParams({
 			client_id: config.instagram.appId,
 			redirect_uri: redirectUri('instagram'),
@@ -48,6 +67,12 @@ export const instagram: Adapter = {
 	},
 
 	async exchangeCode(code) {
+		if (unifiedSetup()) {
+			const q = new URLSearchParams({ client_id: config.instagram.appId, client_secret: config.instagram.appSecret, redirect_uri: redirectUri('instagram'), code });
+			const t = await json(`${FB_GRAPH}/oauth/access_token?${q}`);
+			// Portfolio-owned token. Its lifetime comes from the configuration ("Never" is recommended).
+			return { accessToken: t.access_token, accessExpiresAt: t.expires_in ? Date.now() + t.expires_in * 1000 : null, scopes: null };
+		}
 		const short = await json('https://api.instagram.com/oauth/access_token', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -61,6 +86,11 @@ export const instagram: Adapter = {
 
 	async refresh(account, _r, accessToken) {
 		if (!accessToken) throw new PermanentError('No token stored');
+		if (viaUnified(account)) {
+			// Unified-login tokens are not refreshed by the app; an expired one means signing in again.
+			if (account.access_expires_at == null || account.access_expires_at > Date.now()) return { accessToken, accessExpiresAt: account.access_expires_at };
+			throw new AuthError('This Instagram sign-in has expired. Reconnect it (set the Meta configuration token expiry to Never to avoid this).');
+		}
 		// Long-lived tokens can be refreshed once they are at least 24 hours old and not yet expired.
 		if (Date.now() - account.updated_at < DAY && (account.access_expires_at ?? 0) > Date.now()) return { accessToken, accessExpiresAt: account.access_expires_at };
 		const q = new URLSearchParams({ grant_type: 'ig_refresh_token', access_token: accessToken });
@@ -68,7 +98,18 @@ export const instagram: Adapter = {
 		return { accessToken: t.access_token, accessExpiresAt: Date.now() + (t.expires_in ?? 60 * 86400) * 1000 };
 	},
 
-	async identity(accessToken) {
+	/** Unified login can share several Instagram accounts in one sign-in; all of them are connected. */
+	async identities(accessToken, tokens) {
+		if (!unifiedSetup()) return [await instagram.identity(accessToken, tokens)];
+		const r = await json(`${FB_GRAPH}/me/assigned_instagram_accounts?fields=id,username,name,profile_picture_url`, { headers: { Authorization: `Bearer ${accessToken}` } });
+		const list = (r.data ?? []) as any[];
+		if (!list.length)
+			throw new AttentionError('Meta did not share any Instagram account. Sign in again and tick your Instagram account(s) when asked, and make sure your Meta configuration includes the business_management permission.');
+		return list.map((a) => ({ externalId: String(a.id), displayName: a.name || a.username || 'Instagram account', handle: a.username ? `@${a.username}` : null, avatarUrl: a.profile_picture_url ?? null, meta: { via: 'unified' } }));
+	},
+
+	async identity(accessToken, tokens) {
+		if (unifiedSetup()) return (await instagram.identities!(accessToken, tokens))[0];
 		const me = await json(`${G()}/me?fields=user_id,username,name,profile_picture_url,account_type`, { headers: { Authorization: `Bearer ${accessToken}` } });
 		if (me.account_type && !['BUSINESS', 'MEDIA_CREATOR', 'CREATOR'].includes(String(me.account_type))) {
 			throw new AttentionError('This Instagram account is personal. Switch it to a Professional (Business or Creator) account to publish.');
@@ -101,7 +142,7 @@ export const instagram: Adapter = {
 
 		if (!ctx.ref.containerId) {
 			ctx.needFile();
-			const limit = await json(`${G()}/${igId}/content_publishing_limit?fields=quota_usage,config`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null);
+			const limit = await json(`${G(ctx.account)}/${igId}/content_publishing_limit?fields=quota_usage,config`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null);
 			const used = limit?.data?.[0]?.quota_usage;
 			const total = limit?.data?.[0]?.config?.quota_total;
 			if (used != null && total != null && used >= total) throw new TransientError(`Instagram's publishing limit is reached (${used}/${total} in 24 h)`, 60 * 60_000);
@@ -115,7 +156,7 @@ export const instagram: Adapter = {
 				if (c) params.cover_url = publicMediaUrl(c.id);
 				else ctx.log('The chosen cover image is no longer on this computer, so Instagram picks the cover.');
 			}
-			const c = await json(`${G()}/${igId}/media`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/x-www-form-urlencoded' }, body: form(params) });
+			const c = await json(`${G(ctx.account)}/${igId}/media`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/x-www-form-urlencoded' }, body: form(params) });
 			ctx.save({ phase: 'processing', state: 'processing', providerRef: { containerId: c.id }, progress: 0.1 });
 			ctx.log('Instagram is downloading and processing the video.');
 		}
@@ -138,7 +179,7 @@ export const instagram: Adapter = {
 
 		// From here a lost response could mean the Reel is live, so mark the attempt uncertain first.
 		ctx.save({ phase: 'publishing', uncertain: true, providerRef: { ...ctx.ref, publishAt: Date.now() } });
-		const pub = await json(`${G()}/${igId}/media_publish`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/x-www-form-urlencoded' }, body: form({ creation_id: ctx.ref.containerId }) });
+		const pub = await json(`${G(ctx.account)}/${igId}/media_publish`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/x-www-form-urlencoded' }, body: form({ creation_id: ctx.ref.containerId }) });
 		ctx.save({ remoteId: pub.id, uncertain: false });
 		return finishWith(ctx, pub.id);
 	},
@@ -146,12 +187,12 @@ export const instagram: Adapter = {
 
 async function container(ctx: PublishContext, id: string) {
 	const token = await ctx.token();
-	return json(`${G()}/${id}?fields=status_code,status`, { headers: { Authorization: `Bearer ${token}` } });
+	return json(`${G(ctx.account)}/${id}?fields=status_code,status`, { headers: { Authorization: `Bearer ${token}` } });
 }
 
 async function recentMedia(ctx: PublishContext) {
 	const token = await ctx.token();
-	const r = await json(`${G()}/${ctx.account.external_id}/media?fields=id,permalink,timestamp,caption,media_product_type&limit=25`, { headers: { Authorization: `Bearer ${token}` } });
+	const r = await json(`${G(ctx.account)}/${ctx.account.external_id}/media?fields=id,permalink,timestamp,caption,media_product_type&limit=25`, { headers: { Authorization: `Bearer ${token}` } });
 	return r.data ?? [];
 }
 
@@ -174,7 +215,7 @@ async function matchPublished(ctx: PublishContext): Promise<Outcome> {
 async function finishWith(ctx: PublishContext, mediaId: string, permalink?: string): Promise<Outcome> {
 	if (!permalink) {
 		const token = await ctx.token();
-		const m = await json(`${G()}/${mediaId}?fields=permalink`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null);
+		const m = await json(`${G(ctx.account)}/${mediaId}?fields=permalink`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null);
 		permalink = m?.permalink;
 	}
 	return { state: 'published', remoteId: mediaId, permalink: permalink ?? null };

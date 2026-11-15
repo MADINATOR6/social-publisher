@@ -20,7 +20,7 @@ export type Verify = { ok: boolean; simulated?: boolean; reconnect?: boolean; ch
 export type Setup = {
 	appUrl: string;
 	publicBaseUrl: { value: string | null; source: 'app' | 'env' | null };
-	platforms: Record<Platform, { configured: boolean; source: 'app' | 'env' | null; idPreview: string | null; hasSecret: boolean; redirectUri: string; idLabel: string; secretLabel: string }>;
+	platforms: Record<Platform, { configured: boolean; source: 'app' | 'env' | null; idPreview: string | null; hasSecret: boolean; redirectUri: string; idLabel: string; secretLabel: string; configPreview?: string | null }>;
 };
 
 /** One account's stats for a period (Windows build). Totals a platform does not report are absent. */
@@ -72,7 +72,7 @@ export const api = {
 	disconnect: (id: string) => call('DELETE', `/api/accounts/${id}`),
 	addDemoAccounts: () => call<Account[]>('POST', '/api/demo/accounts'),
 	setup: () => call<Setup>('GET', '/api/setup'),
-	saveKeys: (p: Platform, body: { id: string; secret: string; publicBaseUrl?: string }) => call<Setup>('PUT', `/api/setup/${p}`, body),
+	saveKeys: (p: Platform, body: { id: string; secret: string; publicBaseUrl?: string; configId?: string }) => call<Setup>('PUT', `/api/setup/${p}`, body),
 	removeKeys: (p: Platform) => call<Setup>('DELETE', `/api/setup/${p}`),
 	savePublicUrl: (url: string) => call<Setup>('PUT', '/api/setup/public-url', { publicBaseUrl: url }),
 	status: () => call<Status>('GET', '/api/status'),

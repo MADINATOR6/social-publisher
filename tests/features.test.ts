@@ -194,3 +194,31 @@ describe('saved account groups', () => {
 		expect(del.json()).toEqual([]);
 	});
 });
+
+describe('Instagram through Meta Unified login', () => {
+	it('signs in with the configuration, connects every shared account, and publishes on graph.facebook.com', async () => {
+		const { saveSettings } = await import('../server/settings.js');
+		saveSettings({ INSTAGRAM_APP_ID: '1234567', INSTAGRAM_APP_SECRET: 'sec', INSTAGRAM_CONFIG_ID: '7654321' });
+		resetSettingsCache();
+		const begin = await post('/api/oauth/instagram/begin', {});
+		const url = new URL(begin.json().url);
+		expect(url.origin + url.pathname).toBe('https://www.facebook.com/v27.0/dialog/oauth');
+		expect(url.searchParams.get('config_id')).toBe('7654321');
+		const calls: string[] = [];
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async (u: any) => {
+			const s = String(u);
+			calls.push(s);
+			if (s.includes('/oauth/access_token')) return new Response(JSON.stringify({ access_token: 'portfolio-token' }), { status: 200 });
+			if (s.includes('/me/assigned_instagram_accounts')) return new Response(JSON.stringify({ data: [{ id: '1789', username: 'voltsys', name: 'Voltsys' }, { id: '1790', username: 'onuhafx', name: 'Onuha FX' }] }), { status: 200 });
+			return new Response('{}', { status: 200 });
+		});
+		const cb = await app.inject({ method: 'GET', url: `/api/oauth/instagram/callback?code=abc&state=${url.searchParams.get('state')}` });
+		expect(decodeURIComponent(String(cb.headers.location ?? cb.body))).toContain('Voltsys, Onuha FX');
+		const ig = (await get('/api/accounts')).json().filter((a: any) => a.platform === 'instagram');
+		expect(ig.map((a: any) => a.handle).sort()).toEqual(['@onuhafx', '@voltsys']);
+		expect(calls.some((c) => c.startsWith('https://graph.facebook.com/v27.0/oauth/access_token'))).toBe(true);
+		const { viaUnified } = await import('../server/platforms/instagram.js');
+		const { getAccount } = await import('../server/accounts.js');
+		expect(viaUnified(getAccount(ig[0].id))).toBe(true);
+	});
+});

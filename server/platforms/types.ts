@@ -102,6 +102,8 @@ export interface Adapter {
 	exchangeCode(code: string, pkceVerifier: string): Promise<TokenSet>;
 	refresh(account: AccountRow, refreshToken: string | null, accessToken: string | null): Promise<TokenSet>;
 	identity(accessToken: string, tokens: TokenSet): Promise<Identity>;
+	/** Platforms whose one sign-in can grant several accounts (Instagram Unified login). */
+	identities?(accessToken: string, tokens: TokenSet): Promise<Identity[]>;
 	revoke?(accessToken: string | null, refreshToken: string | null): Promise<void>;
 	/** Runs from the target's current phase. Throw TransientError, AuthError or PermanentError on failure. */
 	run(ctx: PublishContext): Promise<Outcome>;
