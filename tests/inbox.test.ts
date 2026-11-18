@@ -42,7 +42,7 @@ const drop = (name: string, json: object) => {
 };
 
 describe('drafts only', () => {
-	it('is on by default and turns public YouTube into Private and TikTok Direct into the inbox', async () => {
+	it('is on by default: keeps the chosen YouTube visibility and turns TikTok Direct into the inbox', async () => {
 		expect((await app.inject({ method: 'GET', url: '/api/config' })).json().draftsOnly).toBe(true);
 		const yt = seedAccount('youtube');
 		const tt = seedAccount('tiktok');
@@ -50,7 +50,7 @@ describe('drafts only', () => {
 		const r = await app.inject({ method: 'POST', url: '/api/posts', headers: H, payload: { idempotencyKey: 'drafts-1234', mediaId: m, caption: 'hi', targets: [{ accountId: yt.id, settings: { title: 'T', privacy: 'public', madeForKids: false } }, { accountId: tt.id, settings: { mode: 'direct', privacy: 'PUBLIC_TO_EVERYONE' } }] } });
 		expect(r.statusCode).toBe(200);
 		const s = settingsOf(r.json().post.id);
-		expect(s.find((x) => x.platform === 'youtube').privacy).toBe('private');
+		expect(s.find((x) => x.platform === 'youtube').privacy).toBe('public');
 		expect(s.find((x) => x.platform === 'tiktok')).toMatchObject({ mode: 'inbox', privacy: 'SELF_ONLY' });
 	});
 	it('refuses Instagram while on, and allows it when turned off', async () => {
@@ -66,7 +66,17 @@ describe('drafts only', () => {
 });
 
 describe('inbox folder', () => {
-	it('sends a dropped video as drafts to YouTube and TikTok, never Instagram, then files it under Sent', async () => {
+	it('lets the JSON choose the YouTube visibility', async () => {
+		seedAccount('youtube');
+		const inbox = startInbox(app, 60_000);
+		drop('quiet', { title: 'Quiet one', caption: 'x', privacy: 'unlisted' });
+		await inbox.scan();
+		await inbox.scan();
+		inbox.stop();
+		const r = JSON.parse(fs.readFileSync(path.join(dir, 'Sent', 'quiet.result.json'), 'utf8'));
+		expect(settingsOf(r.postId)[0].privacy).toBe('unlisted');
+	});
+	it('sends a dropped video to YouTube (Public by default) and the TikTok inbox, never Instagram, then files it under Sent', async () => {
 		const yt = seedAccount('youtube');
 		seedAccount('tiktok');
 		seedAccount('instagram');
@@ -80,7 +90,7 @@ describe('inbox folder', () => {
 		const result = JSON.parse(fs.readFileSync(path.join(dir, 'Sent', 'story-1.result.json'), 'utf8'));
 		const s = settingsOf(result.postId);
 		expect(s.map((x) => x.platform)).toEqual(['tiktok', 'youtube']);
-		expect(s.find((x) => x.platform === 'youtube')).toMatchObject({ title: 'Roblox story', description: 'Wait for it #roblox', privacy: 'private' });
+		expect(s.find((x) => x.platform === 'youtube')).toMatchObject({ title: 'Roblox story', description: 'Wait for it #roblox', privacy: 'public' });
 		expect(s.find((x) => x.platform === 'tiktok')).toMatchObject({ mode: 'inbox' });
 		expect(getDb().prepare('SELECT caption FROM posts WHERE id = ?').get(result.postId)).toMatchObject({ caption: 'Wait for it #roblox' });
 		expect(yt.id).toBeTruthy();
@@ -120,3 +130,12 @@ describe('inbox folder', () => {
 	});
 });
 void saveSettings;
+
+describe('TikTok caption hand-off', () => {
+	it('puts the TikTok caption in the finish notice so the app can copy it', async () => {
+		const { summarize } = await import('../server/notify.js');
+		const n = summarize('p', [{ platform: 'tiktok', state: 'needs_attention', error: 'Sent to your TikTok inbox' }], 'Wait for it #roblox', 'a.mp4', false, 'Wait for it #roblox');
+		expect(n).toMatchObject({ title: 'Sent to your TikTok inbox', copy: 'Wait for it #roblox' });
+		expect(n.body).toMatch(/Caption copied/);
+	});
+});

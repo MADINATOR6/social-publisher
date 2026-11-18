@@ -25,7 +25,7 @@ function NotifyToggle() {
 /** Drafts only: YouTube goes up Private and TikTok to the inbox, so nothing goes public by itself. */
 function DraftsToggle({ on, changed }: { on: boolean; changed: () => void }) {
 	return (
-		<button className={`ghost-link ${on ? 'drafts-on' : ''}`} aria-pressed={on} title={on ? 'Drafts only: YouTube uploads as Private, TikTok goes to your inbox, Instagram is skipped. Nothing goes public by itself (click to allow public posts)' : 'Public posting is allowed (click to switch back to drafts only)'} onClick={async () => (await api.setPrefs({ draftsOnly: !on }), changed())}>
+		<button className={`ghost-link ${on ? 'drafts-on' : ''}`} aria-pressed={on} title={on ? 'Drafts only: TikTok goes to your inbox and Instagram is skipped. YouTube uses the visibility you choose (click to allow Instagram)' : 'Instagram allowed (click to switch back to drafts only)'} onClick={async () => (await api.setPrefs({ draftsOnly: !on }), changed())}>
 			<Icon.check /> <span>{on ? 'Drafts only' : 'Public allowed'}</span>
 		</button>
 	);

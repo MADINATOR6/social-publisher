@@ -27,11 +27,11 @@ import { AuthError } from './platforms/types.js';
 const FEATURES = ['schedule', 'markPosted', 'repost', 'covers', 'analytics', 'groups', 'draftsOnly'];
 
 /**
- * Drafts only: YouTube uploads as Private and TikTok goes to the inbox, so the owner publishes each
- * one by hand. Instagram has no drafts in its API, so it is refused.
+ * Drafts only: TikTok always goes to the inbox (the owner finishes it in TikTok) and Instagram, which
+ * has no drafts in its API, is refused. YouTube keeps the visibility the owner chose.
  */
 export function asDraft(platform: Platform, s: Record<string, unknown>): Record<string, unknown> | null {
-	if (platform === 'youtube') return { ...s, privacy: 'private' };
+	if (platform === 'youtube') return s;
 	if (platform === 'tiktok') return { ...s, mode: 'inbox', privacy: 'SELF_ONLY' };
 	return null;
 }

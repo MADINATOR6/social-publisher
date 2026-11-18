@@ -1,7 +1,7 @@
 // Inbox folder: the owner's Claude sessions (or the owner) drop a finished video plus a small JSON
-// file here, and Publisher sends it to the chosen accounts as drafts only: YouTube Private and the
-// TikTok inbox. Nothing that arrives this way can go public by itself. Instagram has no drafts for
-// apps, so it is never used from the inbox.
+// file here, and Publisher sends it to the chosen accounts: YouTube with the chosen visibility
+// (Public unless the JSON says otherwise) and TikTok to the inbox, where the owner adds the caption
+// and posts. Instagram is never used from the inbox.
 //
 // It goes through the app's own upload and publish routes, so every normal check still applies.
 import fs from 'node:fs';
@@ -27,6 +27,8 @@ export type Drop = {
 	accounts?: string[];
 	madeForKids?: boolean;
 	categoryId?: string;
+	/** YouTube visibility: public (default), unlisted or private. */
+	privacy?: 'public' | 'unlisted' | 'private';
 };
 type Entry = { name: string; at: number; status: 'sent' | 'failed' | 'working'; message: string; postId?: string };
 
@@ -67,7 +69,7 @@ function settingsFor(platform: Platform, drop: Drop, filename: string) {
 	const caption = (drop.caption ?? '').trim();
 	if (platform === 'tiktok') return { captionOverride: '', mode: 'inbox', privacy: 'SELF_ONLY', allowComments: true, allowDuet: false, allowStitch: false };
 	const title = (drop.title ?? caption.split('\n')[0] ?? '').trim() || filename.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ');
-	return { title: title.slice(0, 100), description: (drop.description ?? caption).slice(0, 5000), privacy: 'private', madeForKids: drop.madeForKids ?? false, categoryId: drop.categoryId ?? '20' };
+	return { title: title.slice(0, 100), description: (drop.description ?? caption).slice(0, 5000), privacy: ['public', 'unlisted', 'private'].includes(String(drop.privacy)) ? drop.privacy : 'public', madeForKids: drop.madeForKids ?? false, categoryId: drop.categoryId ?? '20' };
 }
 
 function move(dir: string, sub: string, files: string[]) {
@@ -109,16 +111,17 @@ export async function sendDrop(app: FastifyInstance, video: string, drop: Drop) 
 	});
 	const body = res.json();
 	if (res.statusCode !== 200) throw new Error([body.error, ...(body.issues ?? []).map((i: any) => i.message)].filter(Boolean).join(' '));
-	return { postId: body.post.id as string, accounts: accounts.map((x) => `${x.displayName} (${x.platform === 'youtube' ? 'YouTube, Private' : 'TikTok inbox'})`) };
+	return { postId: body.post.id as string, accounts: accounts.map((x) => `${x.displayName} (${x.platform === 'youtube' ? `YouTube, ${(settingsFor('youtube', drop, filename) as any).privacy}` : 'TikTok inbox'})`) };
 }
 
 const README = `Publisher inbox
 ===============
 
-Put a finished video here and Publisher sends it as DRAFTS ONLY:
-  - YouTube: uploaded as Private. Make it Public in YouTube Studio when you want.
-  - TikTok: sent to your TikTok inbox. Open TikTok, add a sound if you like, and post.
-  - Instagram: never (Instagram has no drafts for apps).
+Put a finished video here and Publisher sends it:
+  - YouTube: posted with the visibility in the JSON ("privacy"), Public if left out.
+  - TikTok: sent to your TikTok inbox. Publisher copies the caption to the clipboard
+    (it reaches your iPhone too with Universal Clipboard): open the draft, paste it, add a sound, post.
+  - Instagram: never from this folder.
 
 How to drop a video
 -------------------
@@ -133,6 +136,7 @@ my-story.json
   "description": "Optional: a different YouTube description",
   "group": "Optional: a saved group name in Publisher, for example Roblox",
   "accounts": ["Optional: account names or handles, for example Voltsys or @voltsysan"],
+  "privacy": "public",
   "madeForKids": false
 }
 

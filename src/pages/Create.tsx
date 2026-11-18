@@ -15,7 +15,7 @@ function defaults(p: Platform, filename: string): Settings {
 	const base = { overrideOn: false, captionOverride: '' };
 	if (p === 'tiktok') return { ...base, mode: 'inbox', privacy: 'SELF_ONLY', allowComments: true, allowDuet: false, allowStitch: false };
 	if (p === 'instagram') return { ...base, shareToFeed: true, thumbSec: '' };
-	return { ...base, title: filename.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').slice(0, 100), description: '', privacy: '', madeForKids: null, categoryId: '22' };
+	return { ...base, title: filename.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').slice(0, 100), description: '', privacy: 'public', madeForKids: null, categoryId: '22' };
 }
 
 /** A <input type="datetime-local"> value for a time, in this computer's time zone. */
@@ -49,7 +49,7 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 	const [key, setKey] = useState(newKey);
 	const canSchedule = has(config, 'schedule');
 	const canCover = has(config, 'covers');
-	/** Drafts only: YouTube goes up Private, TikTok to the inbox, Instagram is not offered. */
+	/** Drafts only: TikTok goes to the inbox and Instagram is not offered. YouTube uses the chosen visibility. */
 	const drafts = has(config, 'draftsOnly') && config.draftsOnly !== false;
 	const [scheduleOn, setScheduleOn] = useState(false);
 	const [when, setWhen] = useState(() => toLocalInput(nextHalfHour()));
@@ -248,7 +248,7 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 			if (drafts && a.platform === 'instagram') out.push({ accountId: a.id, field: `target.${a.id}`, message: 'Drafts only is on, and Instagram has no drafts for apps. Post this Reel from the Instagram app, or click Drafts only at the top to allow public posts.' });
 			if (a.platform === 'youtube') {
 				if (!String(s.title ?? '').trim()) out.push({ accountId: a.id, field: 'youtube.title', message: 'Add a title.' });
-				if (!drafts && !s.privacy) out.push({ accountId: a.id, field: 'youtube.privacy', message: 'Choose who can see it.' });
+				if (!s.privacy) out.push({ accountId: a.id, field: 'youtube.privacy', message: 'Choose who can see it.' });
 				if (typeof s.madeForKids !== 'boolean') out.push({ accountId: a.id, field: 'youtube.madeForKids', message: 'YouTube requires an answer.' });
 			}
 			for (const m of upload.media?.issues[a.platform] ?? []) out.push({ accountId: a.id, field: `media.${a.platform}`, message: `${PLATFORM_NAME[a.platform]}: ${m}` });
@@ -296,7 +296,7 @@ export function CreatePage({ accounts, config, go, onPublished }: { accounts: Ac
 					if (a.platform === 'tiktok') return { accountId: a.id, settings: { ...common, mode: s.mode, privacy: s.privacy, allowComments: s.allowComments, allowDuet: s.allowDuet, allowStitch: s.allowStitch } };
 					const cover = canCover && s.coverId ? { coverId: s.coverId } : {};
 					if (a.platform === 'instagram') return { accountId: a.id, settings: { ...common, ...cover, shareToFeed: s.shareToFeed, thumbOffsetMs: s.thumbSec === '' ? null : Math.round(Number(s.thumbSec) * 1000) } };
-					return { accountId: a.id, settings: { ...cover, title: s.title, description: s.description || caption, privacy: drafts ? 'private' : s.privacy, madeForKids: s.madeForKids, categoryId: s.categoryId } };
+					return { accountId: a.id, settings: { ...cover, title: s.title, description: s.description || caption, privacy: s.privacy, madeForKids: s.madeForKids, categoryId: s.categoryId } };
 				}),
 			});
 			setPost(r.post);
@@ -624,11 +624,7 @@ function PlatformFields({ a, s, set, issues, info, caption, media, locked, canCo
 					<div className="grid2">
 						<div>
 							<div className="label" style={{ marginBottom: 6 }}>Visibility</div>
-							{drafts ? (
-								<div className="hint" style={{ margin: 0 }}><b>Private</b> (drafts only). Make it public in YouTube Studio when you're ready.</div>
-							) : (
-								<Seg label="YouTube visibility" value={s.privacy} onChange={(v) => set({ privacy: v })} options={[{ value: 'public', label: 'Public' }, { value: 'unlisted', label: 'Unlisted' }, { value: 'private', label: 'Private' }].map((o) => ({ ...o, disabled: locked }))} />
-							)}
+							<Seg label="YouTube visibility" value={s.privacy} onChange={(v) => set({ privacy: v })} options={[{ value: 'public', label: 'Public' }, { value: 'unlisted', label: 'Unlisted' }, { value: 'private', label: 'Private' }].map((o) => ({ ...o, disabled: locked }))} />
 							<FieldError issues={issues} field="youtube.privacy" />
 						</div>
 						<div>

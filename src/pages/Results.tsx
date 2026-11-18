@@ -35,7 +35,7 @@ export function describe(t: Target, demo: boolean, mediaDeleted = false): Descri
 		case 'needs_attention': {
 			const err = t.error ?? '';
 			if (t.platform === 'tiktok' && /TikTok inbox/i.test(err) && !t.outcomeUnknown)
-				return { label: demo ? 'Simulated · inbox' : 'Finish in TikTok', tone: demo ? 'sim' : 'wait', explain: demo ? 'Simulated. A real post would wait in your TikTok inbox.' : `Sent to your TikTok inbox. Open TikTok, tap the inbox notification and finish posting there.${t.canMarkPosted ? ' Then click I posted it.' : ''}`, action: t.canMarkPosted ? 'posted' : null };
+				return { label: demo ? 'Simulated · inbox' : 'Finish in TikTok', tone: demo ? 'sim' : 'wait', explain: demo ? 'Simulated. A real post would wait in your TikTok inbox.' : `Sent to your TikTok inbox. TikTok drafts can't carry a caption, so Publisher copied it: open the draft in TikTok, paste it, and post.${t.canMarkPosted ? ' Then click I posted it.' : ''}`, action: t.canMarkPosted ? 'posted' : null };
 			if (t.accountStatus === 'reconnect_required' || /^Reconnect /.test(err))
 				return { label: 'Reconnect needed', tone: 'wait', explain: t.outcomeUnknown ? `Sign-in expired before ${name} confirmed the result. Reconnect, then use Check again. Nothing will be uploaded twice.` : err, action: 'reconnect' };
 			if (t.outcomeUnknown) return { label: 'Outcome unknown', tone: 'wait', explain: err || `Check ${WHERE[t.platform]} before posting again.`, action: 'check' };
@@ -49,8 +49,25 @@ export function describe(t: Target, demo: boolean, mediaDeleted = false): Descri
 const TONE_VAR: Record<Tone, string> = { ok: 'var(--ok)', wait: 'var(--wait)', bad: 'var(--bad)', busy: 'var(--ember)', idle: 'var(--ink-3)', sim: 'var(--sim)' };
 export const toneColor = (t: Tone) => TONE_VAR[t];
 
-export function TargetRow({ t, demo, mediaDeleted, busy, onAction }: { t: Target; demo: boolean; mediaDeleted?: boolean; busy?: boolean; onAction?: (a: Action, t: Target) => void }) {
+/** The caption to paste into a TikTok draft: its own caption if set, otherwise the post's. */
+const tiktokCaption = (t: Target, caption = '') => String(t.settings?.captionOverride ?? '').trim() || caption.trim();
+
+function CopyCaption({ text }: { text: string }) {
+	const [done, setDone] = useState(false);
+	return (
+		<button className="btn sm" title="TikTok drafts can't carry a caption. Copy it, then paste it in the TikTok draft." onClick={async () => {
+			await navigator.clipboard.writeText(text).catch(() => undefined);
+			setDone(true);
+			setTimeout(() => setDone(false), 1800);
+		}}>
+			{done ? <><Icon.check /> Copied</> : 'Copy caption'}
+		</button>
+	);
+}
+
+export function TargetRow({ t, demo, mediaDeleted, busy, onAction, caption }: { t: Target; demo: boolean; mediaDeleted?: boolean; busy?: boolean; onAction?: (a: Action, t: Target) => void; caption?: string }) {
 	const d = describe(t, demo, mediaDeleted);
+	const paste = t.platform === 'tiktok' && t.state === 'needs_attention' && !demo ? tiktokCaption(t, caption) : '';
 	const active = ['uploading', 'processing'].includes(t.state);
 	return (
 		<div className="result" data-tone={d.tone}>
@@ -68,6 +85,7 @@ export function TargetRow({ t, demo, mediaDeleted, busy, onAction }: { t: Target
 				{d.action === 'check' && onAction && <button className="btn sm" disabled={busy} onClick={() => onAction('check', t)} title="Only asks the platform for the result. Never uploads a second copy."><Icon.retry /> Check again</button>}
 				{d.action === 'retry' && onAction && <button className="btn sm" disabled={busy} onClick={() => onAction('retry', t)}><Icon.retry /> Retry</button>}
 				{d.action === 'reconnect' && onAction && <button className="btn sm" onClick={() => onAction('reconnect', t)}>Reconnect</button>}
+				{paste && <CopyCaption text={paste} />}
 				{d.action === 'posted' && onAction && <button className="btn sm" data-sfx="pop" disabled={busy} onClick={() => onAction('posted', t)} title="You finished this draft in the TikTok app"><Icon.check /> I posted it</button>}
 				{d.action === 'reupload' && <span className="faint" style={{ fontSize: 12 }}>Video cleaned up · upload again</span>}
 			</div>
@@ -110,7 +128,7 @@ export function PublishStatus({ post, onUpdate, onNew, go }: { post: Post; onUpd
 				{post.isDemo && <span className="chip demo">Simulated</span>}
 				<span className="faint grow ellipsis">{post.scheduled ? 'Nothing is sent before then' : !post.done ? 'Keeps going with the window closed' : post.isDemo ? 'Nothing was actually posted' : `${live} of ${post.targets.length} confirmed live`}</span>
 			</div>
-			{post.targets.map((t) => <TargetRow key={t.id} t={t} demo={post.isDemo} mediaDeleted={post.media.deleted} busy={busy} onAction={act} />)}
+			{post.targets.map((t) => <TargetRow key={t.id} t={t} demo={post.isDemo} mediaDeleted={post.media.deleted} busy={busy} onAction={act} caption={post.caption} />)}
 			{post.scheduled && <ScheduleActions post={post} onUpdate={onUpdate} />}
 			{error && <div className="err" role="alert" style={{ padding: '0 18px 10px' }}>{error}</div>}
 			{(post.done || !onNew) && (

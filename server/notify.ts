@@ -5,7 +5,8 @@ import { overrides } from './config.js';
 import { getDb, now, TERMINAL } from './db.js';
 import { PLATFORM_LABEL } from './jobs.js';
 
-export type Notice = { postId: string; title: string; body: string; ok: boolean };
+/** `copy`: text the desktop app puts on the clipboard (the TikTok caption, which TikTok drafts cannot carry). */
+export type Notice = { postId: string; title: string; body: string; ok: boolean; copy?: string };
 type Row = { platform: string; state: string; error: string | null };
 
 /** Notifications are on unless the owner turned them off in the app (setting NOTIFY=off, see settings.ts). */
@@ -21,7 +22,12 @@ export function afterTarget(postId: string): Notice | null {
 	if (!claimed) return null;
 	const p = db.prepare('SELECT p.caption, m.filename, p.is_demo FROM posts p JOIN media m ON m.id = p.media_id WHERE p.id = ?').get(postId) as { caption: string; filename: string; is_demo: number } | undefined;
 	if (!p || !enabled()) return null;
-	return summarize(postId, rows, p.caption, p.filename, Boolean(p.is_demo));
+	const tt = db.prepare("SELECT settings FROM targets WHERE post_id = ? AND platform = 'tiktok' LIMIT 1").get(postId) as { settings: string } | undefined;
+	let own = '';
+	try {
+		own = String(JSON.parse(tt?.settings ?? '{}').captionOverride ?? '').trim();
+	} catch {}
+	return summarize(postId, rows, p.caption, p.filename, Boolean(p.is_demo), own || p.caption.trim());
 }
 
 function names(list: Row[]) {
@@ -34,7 +40,7 @@ export function short(text: string, max: number) {
 	return chars.length <= max ? line : `${chars.slice(0, max - 1).join('').trimEnd()}…`;
 }
 
-export function summarize(postId: string, rows: Row[], caption: string, filename: string, isDemo: boolean): Notice {
+export function summarize(postId: string, rows: Row[], caption: string, filename: string, isDemo: boolean, tiktokCaption = ''): Notice {
 	const what = caption.trim() ? short(caption, 80) : filename;
 	const inbox = (r: Row) => r.platform === 'tiktok' && r.state === 'needs_attention' && (r.error ?? '').includes('TikTok inbox');
 	const published = rows.filter((r) => r.state === 'published');
@@ -44,6 +50,9 @@ export function summarize(postId: string, rows: Row[], caption: string, filename
 	if (isDemo) return n('Simulation finished', `Nothing was posted. ${what}`, problems.length === 0);
 	const done = published.length ? `Published to ${names(published)}. ` : '';
 	if (problems.length) return n(`Couldn't finish ${names(problems)}`, `${done}${short(problems[0].error ?? '', 140)}`, false);
-	if (drafts.length) return n('Sent to your TikTok inbox', `${done}Open TikTok to finish posting: ${what}`, true);
+	if (drafts.length) {
+		if (!tiktokCaption) return n('Sent to your TikTok inbox', `${done}Open TikTok to finish posting: ${what}`, true);
+		return { ...n('Sent to your TikTok inbox', `${done}Caption copied. Open the TikTok draft and paste it.`, true), copy: tiktokCaption };
+	}
 	return n(`Published to ${names(published)}`, what, true);
 }

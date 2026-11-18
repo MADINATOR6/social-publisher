@@ -1,7 +1,7 @@
 // Publisher desktop app: main process.
 // Owns the window, the menu and the quit flow, keeps the encryption keys in the macOS Keychain
 // (via safeStorage), and supervises two utility processes: the local API server and the publishing worker.
-import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, safeStorage, session, shell, utilityProcess, type UtilityProcess } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, Notification, safeStorage, session, shell, utilityProcess, type UtilityProcess } from 'electron';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -188,8 +188,10 @@ async function supervise(name: 'api' | 'worker') {
 }
 
 /** A post finished: a macOS notification plus the app's finish sound (played by the page, even while hidden). */
-function announce(n: { postId?: string; title?: string; body?: string; ok?: boolean }) {
+function announce(n: { postId?: string; title?: string; body?: string; ok?: boolean; copy?: string }) {
 	if (!n || typeof n.title !== 'string') return;
+	// TikTok drafts cannot carry a caption, so it goes on the clipboard (Universal Clipboard reaches the iPhone).
+	if (typeof n.copy === 'string' && n.copy.trim()) clipboard.writeText(n.copy.slice(0, 5000));
 	const ok = n.ok !== false;
 	win?.webContents.executeJavaScript(`window.__publisherFinished && window.__publisherFinished({ ok: ${ok} })`).catch(() => undefined);
 	if (!Notification.isSupported()) return;

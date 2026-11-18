@@ -99,7 +99,7 @@ export function HistoryPage({ posts, refresh, go, canRepost = false }: { posts: 
 								<div className="hdetail">
 									{p.targets.map((t) => (
 										<div key={t.id}>
-											<TargetRow t={t} demo={p.isDemo} mediaDeleted={p.media.deleted} busy={retrying === p.id} onAction={act} />
+											<TargetRow t={t} demo={p.isDemo} mediaDeleted={p.media.deleted} busy={retrying === p.id} onAction={act} caption={p.caption} />
 											{t.events.length > 0 && (
 												<div className="events" style={{ padding: '0 18px 12px 58px', marginTop: -4 }}>
 													{t.events.map((e, i) => <div key={i}><span className="mono">{new Date(e.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}</span>&ensp;{e.message}</div>)}
