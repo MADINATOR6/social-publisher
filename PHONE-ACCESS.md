@@ -22,14 +22,14 @@ public HTTPS address (the tunnel Instagram needs, under Instagram's setup). The 
 shows a link that works anywhere, encrypted.
 
 ## What a phone can and cannot do
-- **Can:** post, schedule, see Post history and Stats, use and manage account groups, switch Drafts only, disconnect an account.
-- **Stays on the computer:** connecting accounts (sign-in returns to the computer), developer keys, the public address, the file picker and folders, and phone access itself.
+- **Can:** post, schedule, see Post history and Stats, use and manage account groups, disconnect an account. It shows whether Drafts only is on.
+- **Stays on the computer:** switching Drafts only (so a phone key, even a stolen one, cannot post publicly), connecting accounts (sign-in returns to the computer), developer keys, the public address, the file picker and folders, and phone access itself.
 
 ## Safety
 - Off by default. Turning it off closes the Wi-Fi listener and refuses every phone at once.
 - Each phone gets its own random key (only a hash is stored). Remove one under Phone access, or tap **Unpair** on the phone itself.
 - A pairing code works once, for 10 minutes.
-- Over home Wi-Fi the connection is plain HTTP, so use it only on your own network. The HTTPS tunnel is encrypted.
+- Over home Wi-Fi the connection is plain HTTP, so someone on the same Wi-Fi could copy a phone's key. Use it only on your own network, or use the HTTPS tunnel, which is encrypted. A copied key still cannot switch off Drafts only, change keys or connect accounts, and removing the phone or turning phone access off ends it.
 
 ## How it is built
 - Windows: `windows/core/src/phone.rs`. Mac: `server/phone.ts`. Same rules in both; tests in `windows/core/tests/phone.rs` and `tests/phone.test.ts`.

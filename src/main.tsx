@@ -157,7 +157,8 @@ function App() {
 					{session.noSignIn && <span className="chip warn signin-off" title="Password protection is off (NO_SIGN_IN=true). Only this computer can open the app. Turn sign-in back on before sharing or tunnelling it.">Sign-in off · local only</span>}
 					<WorkerStatus status={status} inFlight={inFlight} desktop={Boolean(session.desktop)} />
 					<SoundToggle />
-					{has(config, 'draftsOnly') && <DraftsToggle on={config?.draftsOnly !== false} changed={() => api.config().then(setConfig).catch(() => undefined)} />}
+					{has(config, 'draftsOnly') && session.phone && <span className={`ghost-link ${config?.draftsOnly !== false ? 'drafts-on' : ''}`} title={config?.draftsOnly !== false ? 'Drafts only (change it on the computer)' : 'Public allowed (change it on the computer)'}><Icon.check /></span>}
+					{has(config, 'draftsOnly') && !session.phone && <DraftsToggle on={config?.draftsOnly !== false} changed={() => api.config().then(setConfig).catch(() => undefined)} />}
 					{has(config, 'notifications') && !session.phone && <NotifyToggle />}
 					{!session.noSignIn && !session.desktop && <button className="ghost-link" aria-label={session.phone ? 'Unpair this phone' : 'Sign out'} onClick={async () => { if (session.phone && !confirm('Unpair this phone? To use it again, scan a new code in Publisher on the computer.')) return; await api.signOut(); location.reload(); }}><Icon.out /> <span>{session.phone ? 'Unpair' : 'Sign out'}</span></button>}
 				</div>

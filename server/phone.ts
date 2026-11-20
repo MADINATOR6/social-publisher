@@ -45,7 +45,9 @@ export function deviceOf(req: FastifyRequest): string | null {
 /** What a paired phone may not do: developer keys, connecting accounts, native pickers and folders, phone access itself. */
 export function blocked(method: string, url: string) {
 	if (url.startsWith('/api/phone')) return true;
-	if (url.startsWith('/api/desktop/')) return url !== '/api/desktop/prefs';
+	// Phones may read the preferences but not change them: Drafts only is what keeps a stolen phone
+	// key (sniffed on Wi-Fi) from posting publicly.
+	if (url.startsWith('/api/desktop/')) return !(url === '/api/desktop/prefs' && method === 'GET');
 	if (/^\/api\/oauth\/[a-z]+\/(begin|start)$/.test(url)) return true;
 	return url.startsWith('/api/setup') && method !== 'GET';
 }

@@ -58,7 +58,9 @@ describe('phone access', () => {
 		// Allowed from a phone.
 		expect((await fromPhone(cookie, 'GET', '/api/accounts')).statusCode).toBe(200);
 		expect((await fromPhone(cookie, 'POST', '/api/demo/accounts', {})).statusCode).toBe(200);
-		expect((await fromPhone(cookie, 'PUT', '/api/desktop/prefs', { draftsOnly: true })).statusCode).toBe(200);
+		expect((await fromPhone(cookie, 'GET', '/api/desktop/prefs')).statusCode).toBe(200);
+		// Drafts only can only be changed on the computer.
+		expect((await fromPhone(cookie, 'PUT', '/api/desktop/prefs', { draftsOnly: false })).statusCode).toBe(403);
 		// Kept on the computer.
 		for (const [m, u] of [['PUT', '/api/setup/youtube'], ['PUT', '/api/setup/public-url'], ['POST', '/api/oauth/youtube/begin'], ['GET', '/api/phone'], ['POST', '/api/phone/pair']] as const)
 			expect((await fromPhone(cookie, m, u, {})).statusCode, `${m} ${u}`).toBe(403);
@@ -107,7 +109,8 @@ describe('phone access', () => {
 	it('blocks only what belongs on the computer', () => {
 		expect(phone.blocked('GET', '/api/setup')).toBe(false);
 		expect(phone.blocked('PUT', '/api/setup/tiktok')).toBe(true);
-		expect(phone.blocked('PUT', '/api/desktop/prefs')).toBe(false);
+		expect(phone.blocked('GET', '/api/desktop/prefs')).toBe(false);
+		expect(phone.blocked('PUT', '/api/desktop/prefs')).toBe(true);
 		expect(phone.blocked('POST', '/api/desktop/pick-video')).toBe(true);
 		expect(phone.blocked('POST', '/api/oauth/tiktok/begin')).toBe(true);
 		expect(phone.blocked('GET', '/api/oauth/tiktok/callback')).toBe(false);

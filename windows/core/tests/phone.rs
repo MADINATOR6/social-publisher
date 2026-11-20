@@ -69,7 +69,9 @@ async fn a_phone_pairs_once_and_can_post_but_not_change_keys() {
 	// What a phone may do: read and post, and its own preferences.
 	assert_eq!(api.phone(&cookie, Method::GET, "/api/accounts", json!({})).await.0, StatusCode::OK);
 	assert_eq!(api.phone(&cookie, Method::POST, "/api/demo/accounts", json!({})).await.0, StatusCode::OK);
-	assert_eq!(api.phone(&cookie, Method::PUT, "/api/desktop/prefs", json!({ "draftsOnly": true })).await.0, StatusCode::OK);
+	assert_eq!(api.phone(&cookie, Method::GET, "/api/desktop/prefs", json!({})).await.0, StatusCode::OK);
+	// Drafts only can only be changed on the computer.
+	assert_eq!(api.phone(&cookie, Method::PUT, "/api/desktop/prefs", json!({ "draftsOnly": false })).await.0, StatusCode::FORBIDDEN);
 	assert_eq!(api.phone(&cookie, Method::GET, "/api/setup", json!({})).await.0, StatusCode::OK);
 	// What stays on the computer.
 	for (m, p) in [

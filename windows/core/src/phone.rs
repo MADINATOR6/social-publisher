@@ -56,8 +56,10 @@ pub fn blocked(method: &Method, path: &str) -> bool {
 	if path.starts_with("/api/phone") {
 		return true;
 	}
+	// Phones may read the preferences but not change them: Drafts only is what keeps a stolen phone
+	// key (sniffed on Wi-Fi) from posting publicly.
 	if path.starts_with("/api/desktop/") {
-		return path != "/api/desktop/prefs";
+		return !(path == "/api/desktop/prefs" && *method == Method::GET);
 	}
 	if path.starts_with("/api/oauth/") && (path.ends_with("/begin") || path.ends_with("/start")) {
 		return true;
