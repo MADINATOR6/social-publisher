@@ -26,8 +26,15 @@ Pair a phone with a QR code under **Connected accounts → Phone access**, then 
 - The release exe was launched with a separate test data folder. It started the API, worker and inbox watcher, the window opened on WebView2, `/terms` and `/privacy` answered 200, and the API answered 401 without the app's cookie. A drop in the inbox with no real accounts connected went to `Needs attention` with "No connected YouTube or TikTok account to send it to."
 - Codex reviewed the diff and found four issues: the clipboard owner window, blank inbox account names meaning "all", a drop whose files cannot be moved being sent again, and the Facebook-route Instagram stats ID. All four are fixed and retested.
 
+- **Owner's must-haves, re-checked on the final exe (2026-11-20):**
+  - Crash recovery: force-killed right after a post was created; on relaunch the log said "found 2 job(s) interrupted last time", both were checked with the platform first, then resumed and finished.
+  - Window close: clicking ✕ while a post was publishing hid the window, showed the "still running in the notification area" notice, and the post finished with the window hidden. Clicking the tray icon brought the window back with the draft intact.
+- **Clicked through by hand (computer use):** the native "Choose a video" picker (copied a clip in, preview and quality checks shown), creating an account group and selecting it from its chip, switching Drafts only off and on, and Phone access (Turn on, Pair a phone, QR code shown).
+
 ## Not checked
-- Clicking through the window by hand: the native picker, the tray menu, the close-to-tray notice, the Drafts only toggle and the group chips. The clipboard copy was not run either, because it needs a real TikTok draft to finish.
+- The tray's right-click menu (Show Logs, About, Quit and its question): the taskbar only allowed left-clicks in this session. The clipboard copy was not run either, because it needs a real (not demo) TikTok draft to finish.
+- A real phone scanning the QR code. Pairing and posting were tested with a phone-sized browser over the Wi-Fi address, not on an actual iPhone or Android phone.
+- The Mac app was not rebuilt (that needs a Mac). Its server changes are covered by `npm test` and the typecheck.
 - Any real platform sign-in or publish, including the Facebook and Unified Instagram routes, which were only checked as far as building their sign-in links.
 - No installer or code signing yet. SmartScreen may warn about a downloaded `Publisher.exe`.
 
