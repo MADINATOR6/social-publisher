@@ -14,7 +14,7 @@ use crate::settings::{self, check_keys, fields, setup_view};
 use crate::util::{decode_component, encode_component, js_str, now_ms};
 use crate::{probe, relay, App};
 use axum::body::{Body, Bytes};
-use axum::extract::{DefaultBodyLimit, Path, Query, Request, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Query, Request, State};
 use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -32,7 +32,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 const DESKTOP_COOKIE: &str = "sp_desktop";
 /// What this backend can do beyond the original contract. The shared UI shows a feature only when it
 /// is listed here, so the Mac app (whose server sends none) keeps its screens unchanged.
-const FEATURES: &[&str] = &["schedule", "notifications", "markPosted", "repost", "covers", "analytics", "groups", "draftsOnly", "inbox"];
+const FEATURES: &[&str] = &["schedule", "notifications", "markPosted", "repost", "covers", "analytics", "groups", "draftsOnly", "inbox", "phone"];
 const SIGN_IN_HOSTS: [&str; 5] = ["accounts.google.com", "www.instagram.com", "api.instagram.com", "www.tiktok.com", "www.facebook.com"];
 
 /// Drafts only: TikTok always goes to the inbox (the owner finishes it in TikTok) and Instagram, which
@@ -96,6 +96,10 @@ pub fn router(app: Arc<App>) -> Router {
 		.route("/api/groups", get(groups_list).post(groups_create))
 		.route("/api/groups/{id}", put(groups_update).delete(groups_delete))
 		.route("/api/inbox", get(inbox_get))
+		.route("/api/phone", get(phone_get).put(phone_put))
+		.route("/api/phone/pair", post(phone_pair))
+		.route("/api/phone/devices/{id}", delete(phone_remove))
+		.route("/pair/{secret}", get(phone_redeem))
 		.route("/terms", get(terms_page))
 		.route("/privacy", get(privacy_page))
 		.fallback(static_ui)
@@ -153,18 +157,38 @@ fn desktop_ok(app: &App, headers: &HeaderMap) -> bool {
 	!want.is_empty() && constant_eq(got.as_bytes(), want.as_bytes())
 }
 fn is_open(path: &str) -> bool {
-	if path == "/api/session" || path == "/api/desktop/enter" || path.starts_with("/m/") || !path.starts_with("/api/") {
+	if path == "/api/session" || path == "/api/desktop/enter" || path.starts_with("/m/") || path.starts_with("/pair/") || !path.starts_with("/api/") {
 		return true;
 	}
 	// /api/oauth/<platform>/callback
 	path.strip_prefix("/api/oauth/").and_then(|r| r.strip_suffix("/callback")).map(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_lowercase())).unwrap_or(false)
 }
 
+/** The paired phone behind a request, unless it is the app window itself. */
+fn phone_of(app: &App, headers: &HeaderMap) -> Option<String> {
+	if desktop_ok(app, headers) {
+		None
+	} else {
+		crate::phone::device_of(app, cookie(headers, crate::phone::COOKIE))
+	}
+}
+
 async fn guard(State(app): S, req: Request, next: Next) -> Response {
 	let path = req.uri().path();
+	// Requests that come straight from the inbox folder carry no peer address; they are this process.
+	let local = req.extensions().get::<ConnectInfo<std::net::SocketAddr>>().map(|c| c.0.ip().is_loopback()).unwrap_or(true);
+	// The window's one-use entry link only ever comes from this computer.
+	if path == "/api/desktop/enter" && !local {
+		return fail(403, "Blocked request.");
+	}
 	if !is_open(path) {
-		if !desktop_ok(&app, req.headers()) {
+		let desktop = desktop_ok(&app, req.headers());
+		let phone = if desktop { None } else { crate::phone::device_of(&app, cookie(req.headers(), crate::phone::COOKIE)) };
+		if !desktop && phone.is_none() {
 			return fail(401, "Sign in first.");
+		}
+		if phone.is_some() && crate::phone::blocked(req.method(), path) {
+			return fail(403, "Do this in Publisher on the computer.");
 		}
 		// Simple CSRF guard: state-changing API calls must come from this app.
 		let safe = matches!(*req.method(), Method::GET | Method::HEAD);
@@ -183,14 +207,26 @@ fn platform_of(p: &str) -> Result<Platform, Response> {
 
 // ---------- session, status, config ----------
 
+/// `desktop`: the app window. `phone`: a paired phone (it gets the web screens, without the native
+/// bridge). `phonePairing`: a phone that is not paired yet is told how to pair instead of a password.
 async fn session(State(app): S, headers: HeaderMap) -> Response {
-	ok(json!({ "signedIn": desktop_ok(&app, &headers), "demoMode": app.cfg.demo_mode, "noSignIn": false, "desktop": true }))
+	let desktop = desktop_ok(&app, &headers);
+	let phone = phone_of(&app, &headers).is_some();
+	ok(json!({ "signedIn": desktop || phone, "demoMode": app.cfg.demo_mode, "noSignIn": false, "desktop": !phone, "phone": phone, "phonePairing": crate::phone::enabled(&app) }))
 }
 async fn session_post() -> Response {
 	fail(403, "This server belongs to the Publisher desktop app. Open the app instead.")
 }
-async fn session_delete() -> Response {
-	ok(json!({ "ok": true }))
+/** A paired phone signing out forgets itself, so it needs a new QR code to come back. */
+async fn session_delete(State(app): S, headers: HeaderMap) -> Response {
+	let mut res = ok(json!({ "ok": true }));
+	if let Some(id) = phone_of(&app, &headers) {
+		crate::phone::remove(&app, &id);
+		if let Ok(v) = HeaderValue::from_str(&crate::phone::clear_cookie()) {
+			res.headers_mut().insert(header::SET_COOKIE, v);
+		}
+	}
+	res
 }
 
 /** Worker health comes from the worker's own heartbeat, not from this server answering. */
@@ -1033,7 +1069,57 @@ pub fn bridge_script(origin: &str) -> String {
 }
 
 pub async fn serve(listener: tokio::net::TcpListener, app: Arc<App>) -> std::io::Result<()> {
-	axum::serve(listener, router(app)).await
+	axum::serve(listener, router(app).into_make_service_with_connect_info::<std::net::SocketAddr>()).await
+}
+
+// ---------- phone access (see phone.rs) ----------
+
+async fn phone_get(State(app): S) -> Response {
+	ok(crate::phone::view(&app, None))
+}
+
+async fn phone_put(State(app): S, body: Bytes) -> Response {
+	match parse(&body)["enabled"].as_bool() {
+		Some(on) => match crate::phone::set_enabled(&app, on) {
+			Ok(v) => ok(v),
+			Err(e) => fail(500, &format!("Could not save phone access: {e}")),
+		},
+		None => fail(400, "Check the fields."),
+	}
+}
+
+async fn phone_pair(State(app): S) -> Response {
+	match crate::phone::pair(&app) {
+		Ok(v) => ok(v),
+		Err(m) => fail(409, m),
+	}
+}
+
+async fn phone_remove(State(app): S, Path(id): Path<String>) -> Response {
+	if crate::phone::remove(&app, &id) {
+		ok(crate::phone::view(&app, None))
+	} else {
+		fail(404, "Not found")
+	}
+}
+
+/** The phone opens the QR code's link: it is paired and lands in the app. */
+async fn phone_redeem(State(app): S, Path(secret): Path<String>, headers: HeaderMap) -> Response {
+	let ua = headers.get(header::USER_AGENT).and_then(|v| v.to_str().ok()).unwrap_or("");
+	match crate::phone::redeem(&app, &secret, ua) {
+		Some(value) => {
+			let mut res = html("<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Publisher</title><body style=\"background:#0c0c0d\"><script>location.replace('/')</script>".to_string());
+			if let Ok(v) = HeaderValue::from_str(&crate::phone::set_cookie(&value, &headers)) {
+				res.headers_mut().insert(header::SET_COOKIE, v);
+			}
+			res
+		}
+		None => {
+			let mut res = html(callback_page(false, "This pairing link has expired or was already used. In Publisher on the computer, open Connected accounts → Phone access and scan a new code."));
+			*res.status_mut() = StatusCode::GONE;
+			res
+		}
+	}
 }
 
 /** Windows app preferences kept in the database: whether finished posts are announced. */

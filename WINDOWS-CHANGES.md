@@ -11,13 +11,17 @@ several features. Those features are now in the Windows backend too, so both app
 - **Accounts page parity:** Google always shows its account chooser, TikTok asks which account (`disable_auto_auth`) and Instagram forces sign-in (`force_reauth`), so a second account can be added. A cancelled sign-in is explained in plain words. Instagram's three sign-in routes (Instagram Login, Facebook Login, Unified login with a configuration ID) are saved and used, and one Facebook sign-in can connect several Instagram accounts.
 - **Public `/terms` and `/privacy` pages** for the developer consoles. The privacy text says Windows protects the key, not the Keychain.
 
+## Phone use (Android and iPhone)
+Pair a phone with a QR code under **Connected accounts → Phone access**, then post from the phone while the computer publishes. Works on both the Windows and the Mac app. Details, setup and safety notes: `PHONE-ACCESS.md`.
+
 ## Fixed along the way
+- **Security (Mac server):** `/%61pi/accounts` skipped the sign-in check and returned the account list. That was reachable through the tunnel. Fixed in `server/app.ts` (`routedPath`), with tests.
 - The inbox panel text said YouTube goes up Private. It now says what actually happens (the visibility in the caption file, Public if none). This also fixes the Mac app's text.
 - The README now says the build needs the **MSVC** Rust toolchain. The GNU toolchain fails on `windows-sys`.
 
 ## Checks run
-- `npm run windows:test`: **53 of 53** pass. That is the earlier 50 plus 3 new ones in `windows/core/tests/mac_parity.rs`, covering drafts only, groups, Instagram routes, the cancelled sign-in and the inbox folder (sent, bad JSON, blank account name).
-- `npm test`: 100 of 100 pass. `npm run typecheck` passes.
+- `npm run windows:test`: **55 of 55** pass (phone access adds 2). That is the earlier 50 plus 3 new ones in `windows/core/tests/mac_parity.rs`, covering drafts only, groups, Instagram routes, the cancelled sign-in and the inbox folder (sent, bad JSON, blank account name).
+- `npm test`: 103 of 103 pass (phone access adds 3). `npm run typecheck` passes.
 - `npm run windows:build` gives `windows/target/release/Publisher.exe` (16 MB, a GUI exe with no console window).
 - The release exe was launched with a separate test data folder. It started the API, worker and inbox watcher, the window opened on WebView2, `/terms` and `/privacy` answered 200, and the API answered 401 without the app's cookie. A drop in the inbox with no real accounts connected went to `Needs attention` with "No connected YouTube or TikTok account to send it to."
 - Codex reviewed the diff and found four issues: the clipboard owner window, blank inbox account names meaning "all", a drop whose files cannot be moved being sent again, and the Facebook-route Instagram stats ID. All four are fixed and retested.

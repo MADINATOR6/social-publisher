@@ -55,7 +55,7 @@ async fn the_api_is_locked_to_the_app_window() {
 	// Password sign-in does not exist in the desktop app.
 	assert_eq!(bare(Method::POST, "/api/session").json(&json!({ "password": "x" })).send().await.unwrap().status(), 403);
 	let s: Value = bare(Method::GET, "/api/session").send().await.unwrap().json().await.unwrap();
-	assert_eq!(s, json!({ "signedIn": false, "demoMode": true, "noSignIn": false, "desktop": true }));
+	assert_eq!(s, json!({ "signedIn": false, "demoMode": true, "noSignIn": false, "desktop": true, "phone": false, "phonePairing": false }));
 	assert_eq!(api.get("/api/session").await["signedIn"], true);
 	// Unknown API paths are JSON 404s, not the page.
 	assert_eq!(api.req(Method::GET, "/api/nope").send().await.unwrap().status(), 404);

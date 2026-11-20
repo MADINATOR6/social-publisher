@@ -449,6 +449,15 @@ fn boot(handle: AppHandle) {
 		let app = app.clone();
 		runtime.spawn(async move { publisher_core::inbox::start(app) });
 	}
+	{
+		// Phone access (off unless the owner turned it on): also listen on this PC's Wi-Fi address.
+		let app = app.clone();
+		runtime.spawn(async move {
+			if let Some(problem) = publisher_core::phone::start(&app) {
+				app.log.line(&format!("[phone] {problem}"));
+			}
+		});
+	}
 
 	let _ = RUNNING.set(Running { app: app.clone(), owner, user_data, settings_file });
 	if let Err(e) = create_window(&handle, &origin, &nonce) {

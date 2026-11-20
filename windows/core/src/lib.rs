@@ -18,6 +18,7 @@ pub mod keys;
 pub mod logging;
 pub mod media;
 pub mod notify;
+pub mod phone;
 pub mod platforms;
 pub mod probe;
 pub mod relay;

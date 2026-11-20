@@ -29,8 +29,21 @@ pub fn fields(p: Platform) -> Fields {
 
 /// `NOTIFY` and `DRAFTS_ONLY` ("off" or unset) are on/off choices. `INSTAGRAM_CONFIG_ID` and
 /// `INSTAGRAM_LOGIN` pick how Instagram signs in (see `instagram::login_mode`).
-const ALLOWED: [&str; 11] =
-	["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "INSTAGRAM_APP_ID", "INSTAGRAM_APP_SECRET", "TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET", "PUBLIC_BASE_URL", "NOTIFY", "DRAFTS_ONLY", "INSTAGRAM_CONFIG_ID", "INSTAGRAM_LOGIN"];
+/// `PHONE_ACCESS` ("on" or unset) lets paired phones use the app over Wi-Fi (see `phone.rs`).
+const ALLOWED: [&str; 12] = [
+	"GOOGLE_CLIENT_ID",
+	"GOOGLE_CLIENT_SECRET",
+	"INSTAGRAM_APP_ID",
+	"INSTAGRAM_APP_SECRET",
+	"TIKTOK_CLIENT_KEY",
+	"TIKTOK_CLIENT_SECRET",
+	"PUBLIC_BASE_URL",
+	"NOTIFY",
+	"DRAFTS_ONLY",
+	"INSTAGRAM_CONFIG_ID",
+	"INSTAGRAM_LOGIN",
+	"PHONE_ACCESS",
+];
 
 /** Drafts only (on unless the owner turned it off): nothing Publisher sends can go public by itself. */
 pub fn drafts_only(app: &App) -> bool {

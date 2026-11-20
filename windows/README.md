@@ -7,7 +7,7 @@ Requirements: Windows 10 or 11 (x64), Node 22.13 or later, Rust (stable, **MSVC*
 
 ```
 npm install
-npm run windows:test     # 53 Rust tests, all against a local stand-in for the platform APIs
+npm run windows:test     # 55 Rust tests, all against a local stand-in for the platform APIs
 npm run windows:build    # builds the UI, then windows\target\release\Publisher.exe
 npm run windows:run
 ```
@@ -43,6 +43,7 @@ The Windows backend lists these in `/api/config` under `features`. The shared in
 - **Account groups** (`groups`): saved sets of accounts as one-click chips above Post to, managed in Connected accounts.
 - **Drafts only** (`draftsOnly`, on by default, same as the Mac app): TikTok always goes to the inbox, Instagram is refused, YouTube keeps the visibility chosen. The toggle is at the top of the window.
 - **Inbox folder** (`inbox`): `%USERPROFILE%\Videos\Publisher Inbox` (or `INBOX_DIR`). Drop `name.mp4`, then `name.json`; the format is in the folder's `README.txt`. Tray menu → Show Inbox Folder in Explorer. When a TikTok draft finishes, its caption is put on the Windows clipboard.
+- **Phone access** (`phone`, off by default): pair an Android phone or iPhone with a QR code and post from it over Wi-Fi or the HTTPS tunnel. See `PHONE-ACCESS.md`.
 - **Instagram sign-in routes**: Instagram Login, Facebook Login and Unified login (`config_id`), chosen in the Instagram setup panel. Facebook-route accounts call graph.facebook.com.
 
 ## How it is put together
@@ -81,7 +82,7 @@ Measured on the development PC (Windows 11, release build):
 - **After a crash:** interrupted jobs resume as soon as the app starts (only one copy can run, so old leases are known to be dead) instead of after the 60-second lease runs out. They are still flagged to check with the platform first.
 
 ## Checked
-- `npm run windows:test`: 53 of 53 pass (3 in `tests/mac_parity.rs`: drafts only, groups, Instagram routes, the inbox folder), including scheduling, notifications, marking a TikTok draft posted, cover images and stats. They cover the reconcile safety rules ported from `tests/reconcile.test.ts`, the queue, the API lock-down, upload and demo publishing, key storage, opening a value encrypted by the Node server, and the relay flows (connect with PKCE, refresh, revoke, expired sign-in, Instagram through hosted storage).
+- `npm run windows:test`: 55 of 55 pass (3 in `tests/mac_parity.rs`: drafts only, groups, Instagram routes, the inbox folder; 2 in `tests/phone.rs`: pairing, phone limits, encoded paths), including scheduling, notifications, marking a TikTok draft posted, cover images and stats. They cover the reconcile safety rules ported from `tests/reconcile.test.ts`, the queue, the API lock-down, upload and demo publishing, key storage, opening a value encrypted by the Node server, and the relay flows (connect with PKCE, refresh, revoke, expired sign-in, Instagram through hosted storage).
 - `npm run relay:test`: 15 of 15 pass for the relay itself (redirect safety, code exchange, error pass-through, signed media links with byte ranges, the 24-hour sweep, the public pages).
 - With a relay address set, the release build's Connected accounts screen shows only **Connect** buttons, and Connect points at the relay with the app's port.
 - Release build driven through its real window (WebView2 debugging port): bridge present, cookie not readable by the page, demo accounts added, a real MP4 uploaded through the page and previewed, a demo post published to all three destinations, history kept across launches.
