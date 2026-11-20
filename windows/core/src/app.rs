@@ -95,6 +95,8 @@ pub struct Notice {
 	pub title: String,
 	pub body: String,
 	pub ok: bool,
+	/// Text the desktop app puts on the clipboard: the TikTok caption, which TikTok drafts cannot carry.
+	pub copy: Option<String>,
 }
 
 pub struct PendingOAuth {

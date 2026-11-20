@@ -11,6 +11,8 @@ pub mod app;
 pub mod covers;
 pub mod crypto;
 pub mod db;
+pub mod groups;
+pub mod inbox;
 pub mod jobs;
 pub mod keys;
 pub mod logging;

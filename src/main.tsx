@@ -22,7 +22,7 @@ function NotifyToggle() {
 	);
 }
 
-/** Drafts only: YouTube goes up Private and TikTok to the inbox, so nothing goes public by itself. */
+/** Drafts only: TikTok goes to the inbox and Instagram is skipped. YouTube keeps the visibility chosen in the composer. */
 function DraftsToggle({ on, changed }: { on: boolean; changed: () => void }) {
 	return (
 		<button className={`ghost-link ${on ? 'drafts-on' : ''}`} aria-pressed={on} title={on ? 'Drafts only: TikTok goes to your inbox and Instagram is skipped. YouTube uses the visibility you choose (click to allow Instagram)' : 'Instagram allowed (click to switch back to drafts only)'} onClick={async () => (await api.setPrefs({ draftsOnly: !on }), changed())}>
